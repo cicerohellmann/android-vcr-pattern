@@ -4,6 +4,43 @@ android-vcr-pattern is an Android application that implements the **VCR (Video C
 
 ---
 
+### Prerequisites
+
+- **Android Studio**: Latest stable version recommended
+- **Minimum SDK**: 24 (Android 7.0)
+- **Target SDK**: 36
+- **Compile SDK**: 36
+- **Java**: Version 11
+- **Kotlin**: 2.x
+- **Gradle**: 8.x
+
+### Key Dependencies
+
+- **OkHttp** - HTTP client for network calls
+- **Kotlinx Serialization** - JSON parsing for NDJSON events
+- **Jetpack Compose** - Modern Android UI toolkit
+- **Kotlin Coroutines** - Async operations and StateFlow
+- **Coil** - Image loading for Compose
+
+### Getting Started
+
+#### Clone the Repository
+```bash
+git clone <repository-url>
+cd android-vcr-pattern
+```
+
+#### Build and Run
+1. Open the project in Android Studio
+2. Sync Gradle dependencies
+3. Run the app on an emulator or physical device
+
+```bash
+./gradlew assembleDebug
+```
+
+---
+
 ### The VCR Pattern Concept
 
 The VCR pattern is inspired by old video cassette recorders:
@@ -35,18 +72,35 @@ The application contains all the VCR pattern logic organized into packages:
 - `TapeLoader.kt` - Loads and parses NDJSON tape files
 - `ReplayTape.kt` - In-memory tape structure for replay lookups
 - `UrlPattern.kt` - Pattern matching for dynamic URLs (e.g., `/users/{id}`)
-- `Mode.kt` - Defines three modes: RECORD, REPLAY, PASSTHROUGH
+- `Mode.kt` - Defines three modes: RECORD, REPLAY, PASSTHROUGH; also contains `AppConfig` data class
 - `TapeLogger.kt` - Logging interface for platform-agnostic code
 - `NoTapeFoundException.kt` - Exception for missing tape files
 
 **Android Integration** (`com.hellmannratti.vcr`):
 - `VcrApp.kt` - Application class holding the SessionRecorder and OkHttpClient
+  - `recorder` - SessionRecorder instance for logging events
+  - `okHttp` - OkHttpClient configured with appropriate interceptors
+  - `config` - Current AppConfig (mode and tape file)
+  - `currentMode` - StateFlow for observing runtime mode changes
+  - `random` - Random instance for generating test data
+  - `switchMode(newMode)` - Switch between RECORD/REPLAY/PASSTHROUGH at runtime
+  - `updateHttpClientWithTape(replayer)` - Update client with a new tape file
+  - `clearBuffer()` - Clear the recording buffer without deleting the file
 - `MainActivity.kt` - UI for switching modes and triggering actions
+  - Mode switching (RECORD/REPLAY/PASSTHROUGH)
+  - Load tape from file picker
+  - Share and download session logs
+  - Clear buffer and delete session file
+  - Test multiple API types (Pokemon, GitHub, JsonPlaceholder, Custom)
+  - Support for GET and POST requests
 - `EnvConfig.kt` - Configuration resolver for selecting mode at startup
 
 **Framework Adapters** (`com.hellmannratti.vcr.framework`):
 - `HttpClients.kt` - Wiring logic for building OkHttp clients in different modes
 - `AndroidTapeLogger.kt` - Android-specific logger implementation
+
+**UI Theme** (`com.hellmannratti.vcr.ui.theme`):
+- Standard Jetpack Compose theme files (`Color.kt`, `Theme.kt`, `Type.kt`) - omitted from detailed documentation for brevity
 
 ---
 
@@ -373,7 +427,7 @@ fun testPokemonFetch() {
 
 ### Summary
 
-**VCR** implements the VCR pattern to make Android app testing and development more reliable and efficient. By recording real HTTP interactions and replaying them later, you get:
+**This project** implements the VCR pattern to make Android app testing and development more reliable and efficient. By recording real HTTP interactions and replaying them later, you get:
 
 - **Deterministic tests** that don't depend on external APIs
 - **Faster test execution** (no network latency)
@@ -382,3 +436,9 @@ fun testPokemonFetch() {
 - **Pattern-based matching** for dynamic URLs
 
 The architecture organizes the recording/replay logic into well-structured packages within a single Android application module, making it maintainable and easy to integrate into existing projects.
+
+---
+
+### License
+
+This project does not currently have a license specified. Please contact the project owner for licensing information.

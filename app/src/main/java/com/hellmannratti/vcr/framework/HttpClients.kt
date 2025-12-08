@@ -1,8 +1,15 @@
-package com.hellmannratti.vcr.replay
+package com.hellmannratti.vcr.framework
 
 import android.content.Context
 import com.hellmannratti.vcr.VcrApp
 import com.hellmannratti.vcr.framework.AndroidTapeLogger
+import com.hellmannratti.vcr.replay.AppConfig
+import com.hellmannratti.vcr.replay.Mode
+import com.hellmannratti.vcr.replay.NoTapeFoundException
+import com.hellmannratti.vcr.replay.RecordingInterceptor
+import com.hellmannratti.vcr.replay.ReplayerInterceptor
+import com.hellmannratti.vcr.replay.TapeLoader
+import com.hellmannratti.vcr.replay.UrlPattern
 import okhttp3.OkHttpClient
 
 /**

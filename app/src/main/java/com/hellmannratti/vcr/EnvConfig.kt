@@ -17,7 +17,7 @@ object EnvConfig {
         val runMode = Mode.RECORD
         
         // Default tape file path
-        val tapeFile = File(context.filesDir, "sessions/session.ndjson")
+        val tapeFile = File(context.filesDir, "sessions/events.ndjson")
         
         return AppConfig(mode = runMode, tapeFile = tapeFile)
     }

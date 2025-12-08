@@ -2,8 +2,8 @@ package com.hellmannratti.vcr
 
 import android.app.Application
 import android.content.Context
+import com.hellmannratti.vcr.framework.HttpClients.client
 import com.hellmannratti.vcr.replay.AppConfig
-import com.hellmannratti.vcr.replay.HttpClients.client
 import com.hellmannratti.vcr.replay.Mode
 import com.hellmannratti.vcr.replay.SessionRecorder
 import kotlinx.coroutines.flow.MutableStateFlow
