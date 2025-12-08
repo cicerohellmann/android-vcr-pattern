@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Share files under app internal files/sessions/ -->
+    <files-path name="sessions" path="sessions/" />
+    <!-- (Optional) share root files dir if needed in future -->
+    <!-- <files-path name="files" path="." /> -->
+    
+</paths>
