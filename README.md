@@ -27,7 +27,7 @@ This is a single-module Android application that implements the VCR pattern for 
 #### **`app` module** (Android application)
 The application contains all the VCR pattern logic organized into packages:
 
-**Core VCR Logic** (`com.hellmannratti.zombie.replay`):
+**Core VCR Logic** (`com.hellmannratti.vcr.replay`):
 - `Event.kt` - Event model (SESSION_START, ACTION, REQUEST, RESPONSE)
 - `SessionRecorder.kt` - Writes events to NDJSON files
 - `RecordingInterceptor.kt` - OkHttp interceptor that captures HTTP traffic
@@ -39,12 +39,12 @@ The application contains all the VCR pattern logic organized into packages:
 - `TapeLogger.kt` - Logging interface for platform-agnostic code
 - `NoTapeFoundException.kt` - Exception for missing tape files
 
-**Android Integration** (`com.hellmannratti.zombie`):
-- `ZombieApp.kt` - Application class holding the SessionRecorder and OkHttpClient
+**Android Integration** (`com.hellmannratti.vcr`):
+- `VcrApp.kt` - Application class holding the SessionRecorder and OkHttpClient
 - `MainActivity.kt` - UI for switching modes and triggering actions
 - `EnvConfig.kt` - Configuration resolver for selecting mode at startup
 
-**Framework Adapters** (`com.hellmannratti.zombie.framework`):
+**Framework Adapters** (`com.hellmannratti.vcr.framework`):
 - `HttpClients.kt` - Wiring logic for building OkHttp clients in different modes
 - `AndroidTapeLogger.kt` - Android-specific logger implementation
 
@@ -54,7 +54,7 @@ The application contains all the VCR pattern logic organized into packages:
 
 #### **Phase 1: Starting a Recording Session**
 
-1. **App Launch** (`ZombieApp.onCreate()`)
+1. **App Launch** (`VcrApp.onCreate()`)
    ```kotlin
    // Resolve the mode (RECORD, REPLAY, or PASSTHROUGH)
    config = EnvConfig.resolve(this)
@@ -362,7 +362,7 @@ The tape file grows over time as you record more sessions. Each `SESSION_START` 
 @Test
 fun testPokemonFetch() {
     // Set up app in REPLAY mode with a specific tape
-    val app = ZombieApp.from(context)
+    val app = VcrApp.from(context)
     app.switchMode(Mode.REPLAY)
     
     // Make request - will be served from tape
@@ -382,7 +382,7 @@ fun testPokemonFetch() {
 
 ### Summary
 
-**Zombie** implements the VCR pattern to make Android app testing and development more reliable and efficient. By recording real HTTP interactions and replaying them later, you get:
+**VCR** implements the VCR pattern to make Android app testing and development more reliable and efficient. By recording real HTTP interactions and replaying them later, you get:
 
 - **Deterministic tests** that don't depend on external APIs
 - **Faster test execution** (no network latency)

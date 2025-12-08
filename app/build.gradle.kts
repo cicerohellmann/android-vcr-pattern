@@ -6,13 +6,13 @@ plugins {
 }
 
 android {
-    namespace = "com.hellmannratti.zombie"
+    namespace = "com.hellmannratti.vcr"
     compileSdk {
         version = release(36)
     }
 
     defaultConfig {
-        applicationId = "com.hellmannratti.zombie"
+        applicationId = "com.hellmannratti.vcr"
         minSdk = 24
         targetSdk = 36
         versionCode = 1
