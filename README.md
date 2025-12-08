@@ -155,23 +155,19 @@ To replay a recorded session:
    val tape = TapeLoader.loadLatestSession(file, patterns, logger)
    ```
 
-2. **Tape Structure** (`Tape` class)
-    - The tape contains:
-        - `sessions`: List of recording sessions (each starts with SESSION_START)
-        - `requestMap`: Map of request patterns to their recorded responses
-        - `actionLog`: Chronological list of user actions
+2. **Tape Structure** (`ReplayTape` class)
+    - The tape is built from the NDJSON file by pairing REQUEST and RESPONSE events
+    - Internally maintains a map of request keys to queued responses
+    - Supports URL pattern matching for dynamic URLs (e.g., `/pokemon/{id}`)
 
 3. **Request Matching** (`ReplayerInterceptor.intercept()`)
    ```kotlin
    // When app makes a request in REPLAY mode
    val request = chain.request()
+   val bodySha256 = safeBodySha256(request.body)
    
    // Try to find a matching recorded response
-   val recordedResponse = tape?.findResponse(
-       method = request.method,
-       url = request.url.toString(),
-       bodyHash = safeBodySha256(request.body)
-   )
+   val recordedResponse = tape?.find(request, bodySha256)
    ```
 
 4. **Pattern Matching** (`UrlPattern.matches()`)
@@ -196,7 +192,7 @@ To replay a recorded session:
            .build()
    } else {
        // No match found - throw exception or fall back
-       throw NoMatchingResponseException("No recorded response found for request")
+       throw NoTapeFoundException("No recorded response found for request")
    }
    ```
 
@@ -344,15 +340,10 @@ The tape file grows over time as you record more sessions. Each `SESSION_START` 
 - Pattern matching allows one recorded response to match multiple similar requests
 - Retrofit-style patterns (`/users/{id}`) are intuitive for developers
 
-#### **Why Single-Threaded Executor?**
-- Ensures events are written in order
-- Prevents race conditions
-- Async writes don't block the main thread
-
-#### **Why Separate Modules?**
-- `tape` module is platform-agnostic (could work on JVM, not just Android)
-- Clean separation of concerns
-- Library could be published independently
+#### **Why Single-Threaded Executor for Recording?**
+- Ensures events are written in chronological order
+- Prevents race conditions when multiple threads log events
+- Async writes don't block the main thread or network calls
 
 ---
 
@@ -390,4 +381,4 @@ fun testPokemonFetch() {
 - **Bug reproduction** from recorded sessions
 - **Pattern-based matching** for dynamic URLs
 
-The architecture cleanly separates the platform-agnostic recording/replay logic (`tape` module) from the Android-specific application code (`app` module), making it reusable and maintainable.
+The architecture organizes the recording/replay logic into well-structured packages within a single Android application module, making it maintainable and easy to integrate into existing projects.
