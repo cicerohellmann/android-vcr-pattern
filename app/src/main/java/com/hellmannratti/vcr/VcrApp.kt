@@ -2,38 +2,27 @@ package com.hellmannratti.vcr
 
 import android.app.Application
 import android.content.Context
-import com.hellmannratti.vcr.framework.HttpClients.client
-import com.hellmannratti.vcr.replay.Clock
-import com.hellmannratti.vcr.replay.AppConfig
-import com.hellmannratti.vcr.replay.IdGenerator
-import com.hellmannratti.vcr.replay.KotlinRandomProvider
-import com.hellmannratti.vcr.replay.Mode
-import com.hellmannratti.vcr.replay.RandomProvider
-import com.hellmannratti.vcr.replay.SessionRecorder
-import com.hellmannratti.vcr.replay.SystemClock
-import com.hellmannratti.vcr.replay.UuidGenerator
+import com.hellmannratti.vcr.framework.AndroidTapeLogger
+import com.hellmannratti.vcr.sessionkit.KotlinRandomProvider
+import com.hellmannratti.vcr.sessionkit.Mode
+import com.hellmannratti.vcr.sessionkit.RandomProvider
+import com.hellmannratti.vcr.sessionkit.SessionKit
+import com.hellmannratti.vcr.sessionkit.SystemClock
+import com.hellmannratti.vcr.sessionkit.UuidGenerator
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import okhttp3.OkHttpClient
 
 /**
  * Holds a single SessionRecorder and OkHttpClient for the whole app so
  * user actions and network events end up in the same NDJSON session file.
  */
 class VcrApp : Application() {
-    lateinit var recorder: SessionRecorder
+    lateinit var sessionKit: SessionKit
         private set
 
-    lateinit var okHttp: OkHttpClient
-        private set
-
-    lateinit  var config: AppConfig
-        private set
-
-    // Task 03: nondeterminism ports used across the app (swappable for tests/replay).
-    val clock: Clock = SystemClock
-    val idGenerator: IdGenerator = UuidGenerator
+    val clock = SystemClock
+    val idGenerator = UuidGenerator
     val randomProvider: RandomProvider = KotlinRandomProvider(kotlin.random.Random.Default)
 
 
@@ -47,22 +36,15 @@ class VcrApp : Application() {
      */
     fun switchMode(newMode: Mode) {
         _currentMode.value = newMode
-        config = AppConfig(mode = newMode, tapeFile = config.tapeFile)
-        
-        okHttp = client(
-            context = this,
-            config = config
-        )
+        sessionKit.switchMode(newMode)
     }
 
     /**
      * Update the HTTP client with a new replayer interceptor.
      * Used when loading a tape file at runtime in REPLAY mode.
      */
-    fun updateHttpClientWithTape(replayer: com.hellmannratti.vcr.replay.ReplayerInterceptor) {
-        okHttp = OkHttpClient.Builder()
-            .addInterceptor(replayer)
-            .build()
+    fun loadTapeFile(file: java.io.File): Int {
+        return sessionKit.loadTape(file)
     }
 
     /**
@@ -71,38 +53,20 @@ class VcrApp : Application() {
      * Also rebuilds the HTTP client to restore recording capability.
      */
     fun clearBuffer() {
-        recorder = SessionRecorder(
-            baseDir = filesDir,
-            logSessionStart = config.mode != Mode.REPLAY,
-            clock = clock,
-            appVersion = "1.0",
-            device = android.os.Build.MODEL ?: "unknown"
-        )
-        
-        // IMPORTANT: Rebuild the HTTP client to restore recording capability
-        // This ensures that after loading a tape (which replaces the client with a replayer),
-        // clearing the buffer will restore the recording interceptor
-        okHttp = client(
-            context = this,
-            config = config
-        )
+        sessionKit.clearBuffer()
     }
 
     override fun onCreate() {
         super.onCreate()
-        // Resolve mode before constructing the recorder so we can avoid logging a new SESSION_START in REPLAY
-        config = EnvConfig.resolve(this)
-        recorder = SessionRecorder(
-                    baseDir = filesDir,
-                    logSessionStart = config.mode != Mode.REPLAY,
-                    clock = clock,
-                    appVersion = "1.0",
-                    device = android.os.Build.MODEL ?: "unknown"
-                )
-        // Build the HTTP client according to the selected mode (LIVE / RECORD / REPLAY)
-        okHttp = client(
-            context = this,
-            config = config
+        val config = EnvConfig.resolve(this)
+        _currentMode.value = config.mode
+        sessionKit = SessionKit(
+            config = config,
+            baseDir = filesDir,
+            clock = clock,
+            idGenerator = idGenerator,
+            randomProvider = randomProvider,
+            logger = AndroidTapeLogger()
         )
     }
 

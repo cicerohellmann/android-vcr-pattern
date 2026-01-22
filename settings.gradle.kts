@@ -21,4 +21,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "android-vcr-pattern"
 include(":app")
+include(":sessionkit")
  

@@ -22,6 +22,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -39,10 +40,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.ViewModelProvider
 import coil.compose.AsyncImage
-import com.hellmannratti.vcr.replay.Mode
+import com.hellmannratti.vcr.sessionkit.Mode
 import com.hellmannratti.vcr.ui.theme.VcrTheme
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
     private val app by lazy { VcrApp.from(this) }
@@ -267,6 +269,66 @@ private fun ApiTestScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Load Tape from Downloads")
+            }
+
+            if (state.player.loaded) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "Player: ${state.player.position}/${state.player.total}",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = { viewModel.onEvent(UiEvent.PlayerStepBack) },
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Step Back") }
+
+                            Button(
+                                onClick = { viewModel.onEvent(UiEvent.PlayerTogglePlay) },
+                                modifier = Modifier.weight(1f)
+                            ) { Text(if (state.player.playing) "Pause" else "Play") }
+
+                            Button(
+                                onClick = { viewModel.onEvent(UiEvent.PlayerStepFwd) },
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Step Fwd") }
+                        }
+
+                        Slider(
+                            value = state.player.position.toFloat(),
+                            onValueChange = { v ->
+                                viewModel.onEvent(UiEvent.PlayerSeek(v.roundToInt()))
+                            },
+                            valueRange = 0f..state.player.total.toFloat(),
+                            steps = 0
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = { viewModel.onEvent(UiEvent.PlayerSeek(0)) },
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Seek Start") }
+
+                            Button(
+                                onClick = { viewModel.onEvent(UiEvent.PlayerSeek(state.player.total)) },
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Seek End") }
+                        }
+                    }
+                }
             }
         }
     }

@@ -10,15 +10,13 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.hellmannratti.vcr.framework.OkHttpNetworkClient
-import com.hellmannratti.vcr.replay.Clock
-import com.hellmannratti.vcr.replay.NetworkClient
-import com.hellmannratti.vcr.replay.RandomProvider
-import com.hellmannratti.vcr.replay.Mode
-import com.hellmannratti.vcr.replay.ActionEvent
-import com.hellmannratti.vcr.replay.UiEventRecorded
-import com.hellmannratti.vcr.replay.TapeLoader
+import com.hellmannratti.vcr.sessionkit.Clock
+import com.hellmannratti.vcr.sessionkit.Mode
+import com.hellmannratti.vcr.sessionkit.NetworkClient
+import com.hellmannratti.vcr.sessionkit.RandomProvider
+import com.hellmannratti.vcr.sessionkit.SessionPlayer
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -43,6 +41,20 @@ class ApiTestViewModel(
     private val network: NetworkClient
 ) : ViewModel() {
 
+    private var fetchJob: Job? = null
+
+    private val player = SessionPlayer(
+        scope = viewModelScope,
+        emitUiEvent = { recorded ->
+            decodeRecordedUiEvent(recorded)?.let { decoded ->
+                onEvent(decoded, fromPlayer = true)
+            }
+        },
+        resetToInitialState = {
+            resetForReplay()
+        }
+    )
+
     private val _state = MutableStateFlow(ApiUiState(mode = app.currentMode.value))
     val state: StateFlow<ApiUiState> = _state.asStateFlow()
 
@@ -55,10 +67,32 @@ class ApiTestViewModel(
                 _state.update { it.copy(mode = mode) }
             }
         }
+
+        viewModelScope.launch {
+            player.state.collectLatest { ps ->
+                _state.update {
+                    it.copy(
+                        player = PlayerUiState(
+                            loaded = ps.loaded,
+                            playing = ps.playing,
+                            position = ps.position,
+                            total = ps.total
+                        )
+                    )
+                }
+            }
+        }
     }
 
-    fun onEvent(event: UiEvent) {
-        recordUiEventIfNeeded(event)
+    fun onEvent(event: UiEvent, fromPlayer: Boolean = false) {
+        if (!fromPlayer && isUserInputGated(event)) {
+            viewModelScope.launch {
+                _effects.emit(UiEffect.ShowToast("Player active: live inputs are gated"))
+            }
+            return
+        }
+
+        if (!fromPlayer) recordUiEventIfNeeded(event)
         when (event) {
             UiEvent.FetchRandomPokemon -> fetchRandomPokemon()
             is UiEvent.FetchFromApi -> fetchFromApi(event.apiType)
@@ -74,6 +108,13 @@ class ApiTestViewModel(
             UiEvent.RequestTapePick -> launchTapePicker()
             is UiEvent.OnTapePicked -> loadTapeFromUri(event.uri)
             UiEvent.DismissModal -> dismissModal()
+
+            UiEvent.PlayerTogglePlay -> togglePlay()
+            UiEvent.PlayerPause -> player.pause()
+            UiEvent.PlayerPlay -> player.play(stepDelayMs = 0L)
+            UiEvent.PlayerStepFwd -> viewModelScope.launch { player.stepForward() }
+            UiEvent.PlayerStepBack -> viewModelScope.launch { player.stepBack() }
+            is UiEvent.PlayerSeek -> viewModelScope.launch { player.seek(event.position) }
         }
     }
 
@@ -85,7 +126,8 @@ class ApiTestViewModel(
                 showGenericModal = false
             )
         }
-        viewModelScope.launch {
+        fetchJob?.cancel()
+        fetchJob = viewModelScope.launch {
             runCatching { fetchRandomPokemonInternal() }
                 .onSuccess { pokemon ->
                     _state.update {
@@ -113,7 +155,8 @@ class ApiTestViewModel(
                 showGenericModal = false
             )
         }
-        viewModelScope.launch {
+        fetchJob?.cancel()
+        fetchJob = viewModelScope.launch {
             runCatching { fetchFromApiInternal(apiType) }
                 .onSuccess { response ->
                     _state.update {
@@ -153,20 +196,39 @@ class ApiTestViewModel(
     private fun shareSessionLog() {
         viewModelScope.launch {
             runCatching {
-                val file = app.recorder.file()
-                val uri: Uri = FileProvider.getUriForFile(
-                    app,
-                    "${app.packageName}.fileprovider",
-                    file
-                )
-                val intent = Intent(Intent.ACTION_SEND).apply {
-                    type = "application/x-ndjson"
-                    putExtra(Intent.EXTRA_STREAM, uri)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                val filesToShare = buildList {
+                    add(app.sessionKit.file)
+                    app.sessionKit.lastTapeLoadErrorFile?.takeIf { it.exists() }?.let { add(it) }
                 }
-                app.startActivity(
-                    Intent.createChooser(intent, "Share session log").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                )
+
+                val authority = "${app.packageName}.fileprovider"
+
+                val intent = if (filesToShare.size == 1) {
+                    val uri = FileProvider.getUriForFile(app, authority, filesToShare.single())
+                    Intent(Intent.ACTION_SEND).apply {
+                        type = "application/x-ndjson"
+                        putExtra(Intent.EXTRA_STREAM, uri)
+                    }
+                } else {
+                    val uris = ArrayList<Uri>(filesToShare.size)
+                    for (f in filesToShare) {
+                        uris.add(FileProvider.getUriForFile(app, authority, f))
+                    }
+                    Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                        type = "*/*"
+                        putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+                    }
+                }.apply {
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                    putExtra(Intent.EXTRA_SUBJECT, "VCR session artifacts")
+                    putExtra(
+                        Intent.EXTRA_TEXT,
+                        "Attached: events.ndjson" + if (filesToShare.size > 1) ", last_tape_load_error.txt" else ""
+                    )
+                }
+
+                app.startActivity(Intent.createChooser(intent, "Share session artifacts")
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }.onFailure { error ->
                 _effects.emit(UiEffect.ShowToast("Failed to share: ${error.message}"))
             }
@@ -177,7 +239,7 @@ class ApiTestViewModel(
         viewModelScope.launch {
             val fileName = "vcr_session_${clock.nowMs()}.ndjson"
             runCatching {
-                val sourceFile = app.recorder.file()
+                val sourceFile = app.sessionKit.file
 
                 withContext(Dispatchers.IO) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -255,7 +317,7 @@ class ApiTestViewModel(
         if (uri == null) return
         viewModelScope.launch {
             runCatching {
-                val destFile = File(app.recorder.file().parentFile, "selected_tape.ndjson")
+                val destFile = File(app.sessionKit.file.parentFile, "selected_tape.ndjson")
 
                 withContext(Dispatchers.IO) {
                     app.contentResolver.openInputStream(uri)?.use { input ->
@@ -265,24 +327,70 @@ class ApiTestViewModel(
                     }
                 }
 
-                val patterns = listOf(
-                    com.hellmannratti.vcr.replay.UrlPattern.fromRetrofitStyle("https://pokeapi.co/api/v2/pokemon/{id}")
-                )
-
-                val tape = TapeLoader.loadLatestSession(destFile, patterns)
-
-                val replayer =
-                    com.hellmannratti.vcr.replay.ReplayerInterceptor() { Mode.REPLAY }.apply {
-                        this.tape = tape
-                    }
-
-                app.updateHttpClientWithTape(replayer)
-                tape.uniqueRequestCount
+                app.switchMode(Mode.REPLAY)
+                app.loadTapeFile(destFile)
+                player.loadLatestSession(destFile)
             }.onSuccess { count ->
                 _effects.emit(UiEffect.ShowToast("Tape loaded successfully: $count unique requests"))
             }.onFailure { error ->
                 _effects.emit(UiEffect.ShowToast("Failed to load tape: ${error.message}"))
             }
+        }
+    }
+
+    private fun togglePlay() {
+        val ps = state.value.player
+        if (!ps.loaded) return
+        if (ps.playing) player.pause() else player.play(stepDelayMs = 0L)
+    }
+
+    private fun resetForReplay() {
+        fetchJob?.cancel()
+        _state.update {
+            it.copy(
+                content = ScreenContent.Idle,
+                showPokemonModal = false,
+                showGenericModal = false,
+                showClearBufferDialog = false,
+                showDeleteFileDialog = false
+            )
+        }
+    }
+
+    private fun decodeRecordedUiEvent(recorded: SessionPlayer.RecordedUiEvent): UiEvent? {
+        if (recorded.screen != "ApiTest") return null
+        return when (recorded.event) {
+            "FetchRandomPokemon" -> UiEvent.FetchRandomPokemon
+            "FetchFromApi" -> {
+                val apiTypeName = (recorded.payload["apiType"] as? JsonPrimitive)?.content
+                val apiType = when (apiTypeName) {
+                    "GitHub" -> ApiType.GitHub("torvalds")
+                    "JsonPlaceholder" -> ApiType.JsonPlaceholder("posts")
+                    "Pokemon" -> ApiType.Pokemon(null)
+                    "Custom" -> null
+                    else -> null
+                } ?: return null
+                UiEvent.FetchFromApi(apiType)
+            }
+            "DismissModal" -> UiEvent.DismissModal
+            else -> null
+        }
+    }
+
+    private fun isUserInputGated(event: UiEvent): Boolean {
+        if (state.value.mode != Mode.REPLAY) return false
+        if (!state.value.player.loaded) return false
+        return when (event) {
+            UiEvent.RequestTapePick,
+            is UiEvent.OnTapePicked,
+            UiEvent.PlayerTogglePlay,
+            UiEvent.PlayerPlay,
+            UiEvent.PlayerPause,
+            UiEvent.PlayerStepFwd,
+            UiEvent.PlayerStepBack,
+            is UiEvent.PlayerSeek -> false
+
+            else -> true
         }
     }
 
@@ -338,9 +446,9 @@ class ApiTestViewModel(
             return object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                    val clock = app.clock
-                    val random = app.randomProvider
-                    val network = OkHttpNetworkClient { app.okHttp }
+                    val clock = app.sessionKit.clock()
+                    val random = app.sessionKit.random()
+                    val network = app.sessionKit.networkClient()
                     return ApiTestViewModel(app, clock, random, network) as T
                 }
             }
@@ -365,39 +473,35 @@ class ApiTestViewModel(
             UiEvent.RequestTapePick -> "RequestTapePick"
             is UiEvent.OnTapePicked -> "OnTapePicked"
             UiEvent.DismissModal -> "DismissModal"
+
+            UiEvent.PlayerTogglePlay -> "PlayerTogglePlay"
+            UiEvent.PlayerPlay -> "PlayerPlay"
+            UiEvent.PlayerPause -> "PlayerPause"
+            UiEvent.PlayerStepFwd -> "PlayerStepFwd"
+            UiEvent.PlayerStepBack -> "PlayerStepBack"
+            is UiEvent.PlayerSeek -> "PlayerSeek"
         }
 
         val payload: Map<String, JsonElement> = when (event) {
             is UiEvent.FetchFromApi -> mapOf("apiType" to JsonPrimitive(event.apiType::class.simpleName ?: "unknown"))
             is UiEvent.OnTapePicked -> mapOf("uri" to JsonPrimitive(event.uri?.toString()))
+            is UiEvent.PlayerSeek -> mapOf("position" to JsonPrimitive(event.position))
             else -> emptyMap()
         }
 
-        app.recorder.log(
-            UiEventRecorded(
-                seq = -1,
-                ts = clock.nowMs(),
-                screen = "ApiTest",
-                event = eventName,
-                payload = payload
-            )
-        )
+        app.sessionKit.recordUiEvent(screen = "ApiTest", event = eventName, payload = payload)
     }
 
     private fun nextIntRecorded(from: Int, until: Int): Int {
         val value = random.nextInt(from, until)
         if (state.value.mode == Mode.RECORD) {
-            app.recorder.log(
-                ActionEvent(
-                    seq = -1,
-                    ts = clock.nowMs(),
-                    name = "ND_RANDOM_INT",
-                    details = buildJsonObject {
-                        put("from", from)
-                        put("until", until)
-                        put("value", value)
-                    }
-                )
+            app.sessionKit.recordAction(
+                name = "ND_RANDOM_INT",
+                details = buildJsonObject {
+                    put("from", from)
+                    put("until", until)
+                    put("value", value)
+                }
             )
         }
         return value
@@ -410,7 +514,15 @@ data class ApiUiState(
     val showPokemonModal: Boolean = false,
     val showGenericModal: Boolean = false,
     val showClearBufferDialog: Boolean = false,
-    val showDeleteFileDialog: Boolean = false
+    val showDeleteFileDialog: Boolean = false,
+    val player: PlayerUiState = PlayerUiState()
+)
+
+data class PlayerUiState(
+    val loaded: Boolean = false,
+    val playing: Boolean = false,
+    val position: Int = 0,
+    val total: Int = 0
 )
 
 sealed class ScreenContent {
@@ -436,6 +548,13 @@ sealed class UiEvent {
     data object RequestTapePick : UiEvent()
     data class OnTapePicked(val uri: Uri?) : UiEvent()
     data object DismissModal : UiEvent()
+
+    data object PlayerTogglePlay : UiEvent()
+    data object PlayerPlay : UiEvent()
+    data object PlayerPause : UiEvent()
+    data object PlayerStepFwd : UiEvent()
+    data object PlayerStepBack : UiEvent()
+    data class PlayerSeek(val position: Int) : UiEvent()
 }
 
 sealed class UiEffect {
