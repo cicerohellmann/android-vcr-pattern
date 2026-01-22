@@ -13,6 +13,7 @@ import java.util.concurrent.Executors
 class SessionRecorder(
     baseDir: File,
     logSessionStart: Boolean = true,
+    private val clock: Clock = SystemClock,
     private val appVersion: String = "unknown",
     private val device: String = "unknown"
 ) {
@@ -39,7 +40,7 @@ class SessionRecorder(
         if (logSessionStart) {
             log(
                 SessionStartEvent(
-                    ts = System.currentTimeMillis(),
+                    ts = clock.nowMs(),
                     appVersion = appVersion,
                     device = device
                 )

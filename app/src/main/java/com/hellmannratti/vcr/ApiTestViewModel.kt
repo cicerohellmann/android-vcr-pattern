@@ -1,0 +1,381 @@
+package com.hellmannratti.vcr
+
+import android.content.ContentValues
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
+import androidx.core.content.FileProvider
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import com.hellmannratti.vcr.framework.OkHttpNetworkClient
+import com.hellmannratti.vcr.replay.Clock
+import com.hellmannratti.vcr.replay.NetworkClient
+import com.hellmannratti.vcr.replay.RandomProvider
+import com.hellmannratti.vcr.replay.Mode
+import com.hellmannratti.vcr.replay.TapeLoader
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import java.io.File
+
+class ApiTestViewModel(
+    private val app: VcrApp,
+    private val clock: Clock,
+    private val random: RandomProvider,
+    private val network: NetworkClient
+) : ViewModel() {
+
+    private val _state = MutableStateFlow(ApiUiState(mode = app.currentMode.value))
+    val state: StateFlow<ApiUiState> = _state.asStateFlow()
+
+    private val _effects = MutableSharedFlow<UiEffect>()
+    val effects: SharedFlow<UiEffect> = _effects.asSharedFlow()
+
+    init {
+        viewModelScope.launch {
+            app.currentMode.collectLatest { mode ->
+                _state.update { it.copy(mode = mode) }
+            }
+        }
+    }
+
+    fun onEvent(event: UiEvent) {
+        when (event) {
+            UiEvent.FetchRandomPokemon -> fetchRandomPokemon()
+            is UiEvent.FetchFromApi -> fetchFromApi(event.apiType)
+            UiEvent.ToggleMode -> toggleMode()
+            UiEvent.ShareSessionLog -> shareSessionLog()
+            UiEvent.DownloadSessionLog -> downloadSessionLog()
+            UiEvent.ShowClearBufferDialog -> _state.update { it.copy(showClearBufferDialog = true) }
+            UiEvent.DismissClearBufferDialog -> _state.update { it.copy(showClearBufferDialog = false) }
+            UiEvent.ShowDeleteFileDialog -> _state.update { it.copy(showDeleteFileDialog = true) }
+            UiEvent.DismissDeleteFileDialog -> _state.update { it.copy(showDeleteFileDialog = false) }
+            UiEvent.ConfirmClearBuffer -> clearBuffer()
+            UiEvent.ConfirmDeleteFile -> deleteSessionFile()
+            UiEvent.RequestTapePick -> launchTapePicker()
+            is UiEvent.OnTapePicked -> loadTapeFromUri(event.uri)
+            UiEvent.DismissModal -> dismissModal()
+        }
+    }
+
+    private fun fetchRandomPokemon() {
+        _state.update {
+            it.copy(
+                content = ScreenContent.Loading,
+                showPokemonModal = false,
+                showGenericModal = false
+            )
+        }
+        viewModelScope.launch {
+            runCatching { fetchRandomPokemonInternal() }
+                .onSuccess { pokemon ->
+                    _state.update {
+                        it.copy(
+                            content = ScreenContent.PokemonLoaded(pokemon),
+                            showPokemonModal = true
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    _state.update {
+                        it.copy(
+                            content = ScreenContent.Error(error.message ?: "Unknown error")
+                        )
+                    }
+                }
+        }
+    }
+
+    private fun fetchFromApi(apiType: ApiType) {
+        _state.update {
+            it.copy(
+                content = ScreenContent.Loading,
+                showPokemonModal = false,
+                showGenericModal = false
+            )
+        }
+        viewModelScope.launch {
+            runCatching { fetchFromApiInternal(apiType) }
+                .onSuccess { response ->
+                    _state.update {
+                        it.copy(
+                            content = ScreenContent.GenericLoaded(response, apiType),
+                            showGenericModal = true
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    _state.update {
+                        it.copy(
+                            content = ScreenContent.Error(error.message ?: "Unknown error")
+                        )
+                    }
+                }
+        }
+    }
+
+    private fun toggleMode() {
+        val newMode = when (state.value.mode) {
+            Mode.RECORD -> Mode.REPLAY
+            Mode.REPLAY -> Mode.RECORD
+            Mode.PASSTHROUGH -> Mode.RECORD
+        }
+        viewModelScope.launch {
+            runCatching { app.switchMode(newMode) }
+                .onSuccess {
+                    _effects.emit(UiEffect.ShowToast("Switched to ${newMode.name} mode"))
+                }
+                .onFailure { error ->
+                    _effects.emit(UiEffect.ShowToast("Failed to switch mode: ${error.message}"))
+                }
+        }
+    }
+
+    private fun shareSessionLog() {
+        viewModelScope.launch {
+            runCatching {
+                val file = app.recorder.file()
+                val uri: Uri = FileProvider.getUriForFile(
+                    app,
+                    "${app.packageName}.fileprovider",
+                    file
+                )
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/x-ndjson"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                app.startActivity(
+                    Intent.createChooser(intent, "Share session log").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            }.onFailure { error ->
+                _effects.emit(UiEffect.ShowToast("Failed to share: ${error.message}"))
+            }
+        }
+    }
+
+    private fun downloadSessionLog() {
+        viewModelScope.launch {
+            val fileName = "vcr_session_${clock.nowMs()}.ndjson"
+            runCatching {
+                val sourceFile = app.recorder.file()
+
+                withContext(Dispatchers.IO) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        val contentValues = ContentValues().apply {
+                            put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+                            put(MediaStore.Downloads.MIME_TYPE, "application/x-ndjson")
+                            put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                        }
+
+                        val uri = app.contentResolver.insert(
+                            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                            contentValues
+                        )
+                        uri?.let {
+                            app.contentResolver.openOutputStream(it)?.use { outputStream ->
+                                sourceFile.inputStream().use { inputStream ->
+                                    inputStream.copyTo(outputStream)
+                                }
+                            }
+                        } ?: error("Failed to create file in Downloads")
+                    } else {
+                        @Suppress("DEPRECATION")
+                        val downloadsDir =
+                            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                        downloadsDir.mkdirs()
+                        val destFile = File(downloadsDir, fileName)
+                        sourceFile.copyTo(destFile, overwrite = true)
+                    }
+                }
+                fileName
+            }.onSuccess { savedName ->
+                _effects.emit(UiEffect.ShowToast("Session log saved to Downloads/$savedName"))
+            }.onFailure { error ->
+                _effects.emit(UiEffect.ShowToast("Failed to download: ${error.message}"))
+            }
+        }
+    }
+
+    private fun clearBuffer() {
+        _state.update { it.copy(showClearBufferDialog = false) }
+        viewModelScope.launch {
+            runCatching { app.clearBuffer() }
+                .onSuccess { _effects.emit(UiEffect.ShowToast("Buffer cleared")) }
+                .onFailure { error ->
+                    _effects.emit(UiEffect.ShowToast("Failed to clear buffer: ${error.message}"))
+                }
+        }
+    }
+
+    private fun deleteSessionFile() {
+        _state.update { it.copy(showDeleteFileDialog = false) }
+        viewModelScope.launch {
+            runCatching {
+                val sessionFile = File(app.filesDir, "sessions/events.ndjson")
+                if (sessionFile.exists()) {
+                    sessionFile.delete()
+                }
+                sessionFile.parentFile?.mkdirs()
+                sessionFile.createNewFile()
+            }.onSuccess {
+                _effects.emit(UiEffect.ShowToast("Session file deleted"))
+            }.onFailure { error ->
+                _effects.emit(UiEffect.ShowToast("Failed to delete session file: ${error.message}"))
+            }
+        }
+    }
+
+    private fun launchTapePicker() {
+        viewModelScope.launch {
+            _effects.emit(UiEffect.LaunchTapePicker)
+        }
+    }
+
+    private fun loadTapeFromUri(uri: Uri?) {
+        if (uri == null) return
+        viewModelScope.launch {
+            runCatching {
+                val destFile = File(app.recorder.file().parentFile, "selected_tape.ndjson")
+
+                withContext(Dispatchers.IO) {
+                    app.contentResolver.openInputStream(uri)?.use { input ->
+                        destFile.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                }
+
+                val patterns = listOf(
+                    com.hellmannratti.vcr.replay.UrlPattern.fromRetrofitStyle("https://pokeapi.co/api/v2/pokemon/{id}")
+                )
+
+                val tape = TapeLoader.loadLatestSession(destFile, patterns)
+
+                val replayer =
+                    com.hellmannratti.vcr.replay.ReplayerInterceptor() { Mode.REPLAY }.apply {
+                        this.tape = tape
+                    }
+
+                app.updateHttpClientWithTape(replayer)
+                tape.uniqueRequestCount
+            }.onSuccess { count ->
+                _effects.emit(UiEffect.ShowToast("Tape loaded successfully: $count unique requests"))
+            }.onFailure { error ->
+                _effects.emit(UiEffect.ShowToast("Failed to load tape: ${error.message}"))
+            }
+        }
+    }
+
+    private fun dismissModal() {
+        _state.update {
+            it.copy(
+                showPokemonModal = false,
+                showGenericModal = false
+            )
+        }
+    }
+
+    private suspend fun fetchRandomPokemonInternal(): PokemonDetail {
+        val randomId = random.nextInt(1, 1026)
+        val response = network.get("https://pokeapi.co/api/v2/pokemon/$randomId").requireSuccess()
+        return Json { ignoreUnknownKeys = true }.decodeFromString<PokemonDetail>(response.body)
+    }
+
+    private suspend fun fetchData(url: String): String {
+        return network.get(url).requireSuccess().body
+    }
+
+    private suspend fun postData(url: String, jsonBody: String): String {
+        return network.post(url = url, body = jsonBody, contentType = "application/json")
+            .requireSuccess()
+            .body
+    }
+
+    private suspend fun fetchFromApiInternal(apiType: ApiType): String {
+        return when (apiType) {
+            is ApiType.Pokemon -> {
+                val id = apiType.id ?: random.nextInt(1, 1026)
+                fetchData("https://pokeapi.co/api/v2/pokemon/$id")
+            }
+
+            is ApiType.GitHub -> {
+                fetchData("https://api.github.com/users/${apiType.username}")
+            }
+
+            is ApiType.JsonPlaceholder -> {
+                val id = apiType.id ?: random.nextInt(1, 101)
+                fetchData("https://jsonplaceholder.typicode.com/${apiType.endpoint}/$id")
+            }
+
+            is ApiType.Custom -> {
+                fetchData(apiType.url)
+            }
+        }
+    }
+
+    companion object {
+        fun factory(app: VcrApp): ViewModelProvider.Factory {
+            return object : ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                    val clock = app.clock
+                    val random = app.randomProvider
+                    val network = OkHttpNetworkClient { app.okHttp }
+                    return ApiTestViewModel(app, clock, random, network) as T
+                }
+            }
+        }
+    }
+}
+
+data class ApiUiState(
+    val mode: Mode,
+    val content: ScreenContent = ScreenContent.Idle,
+    val showPokemonModal: Boolean = false,
+    val showGenericModal: Boolean = false,
+    val showClearBufferDialog: Boolean = false,
+    val showDeleteFileDialog: Boolean = false
+)
+
+sealed class ScreenContent {
+    data object Idle : ScreenContent()
+    data object Loading : ScreenContent()
+    data class PokemonLoaded(val pokemon: PokemonDetail) : ScreenContent()
+    data class GenericLoaded(val response: String, val apiType: ApiType) : ScreenContent()
+    data class Error(val message: String) : ScreenContent()
+}
+
+sealed class UiEvent {
+    data object FetchRandomPokemon : UiEvent()
+    data class FetchFromApi(val apiType: ApiType) : UiEvent()
+    data object ToggleMode : UiEvent()
+    data object ShareSessionLog : UiEvent()
+    data object DownloadSessionLog : UiEvent()
+    data object ShowClearBufferDialog : UiEvent()
+    data object DismissClearBufferDialog : UiEvent()
+    data object ConfirmClearBuffer : UiEvent()
+    data object ShowDeleteFileDialog : UiEvent()
+    data object DismissDeleteFileDialog : UiEvent()
+    data object ConfirmDeleteFile : UiEvent()
+    data object RequestTapePick : UiEvent()
+    data class OnTapePicked(val uri: Uri?) : UiEvent()
+    data object DismissModal : UiEvent()
+}
+
+sealed class UiEffect {
+    data class ShowToast(val message: String) : UiEffect()
+    data object LaunchTapePicker : UiEffect()
+}

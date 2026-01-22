@@ -17,9 +17,10 @@ import okhttp3.OkHttpClient
  */
 object HttpClients {
     fun recording(context: Context): OkHttpClient {
-        val recorder = VcrApp.from(context).recorder
+        val app = VcrApp.from(context)
+        val recorder = app.recorder
         return OkHttpClient.Builder()
-            .addInterceptor(RecordingInterceptor(recorder) { Mode.RECORD })
+            .addInterceptor(RecordingInterceptor(recorder, clock = app.clock, idGenerator = app.idGenerator) { Mode.RECORD })
             .build()
     }
 
@@ -29,7 +30,8 @@ object HttpClients {
      * Interceptor order matters: Recording first (outermost), Replayer second.
      */
     fun client(context: Context, config: AppConfig): OkHttpClient {
-        val recorder = VcrApp.from(context).recorder
+        val app = VcrApp.from(context)
+        val recorder = app.recorder
 
         return when (config.mode) {
             Mode.PASSTHROUGH -> {
@@ -38,11 +40,16 @@ object HttpClients {
             }
             Mode.RECORD -> {
                 OkHttpClient.Builder()
-                    .addInterceptor(RecordingInterceptor(recorder) { config.mode })
+                    .addInterceptor(
+                        RecordingInterceptor(
+                            recorder = recorder,
+                            clock = app.clock,
+                            idGenerator = app.idGenerator
+                        ) { config.mode }
+                    )
                     .build()
             }
             Mode.REPLAY -> {
-                val app = VcrApp.from(context)
                 val file = config.tapeFile ?: app.recorder.file()
                 val logger = AndroidTapeLogger()
                 

@@ -9,6 +9,20 @@ import kotlinx.serialization.json.JsonElement
 /**
  * Event model used for recording and replay.
  * Uses Kotlinx Serialization with a sealed hierarchy and a "type" discriminator to keep the NDJSON stable.
+ *
+ * ### Task 03: nondeterminism payload shapes
+ *
+ * For nondeterministic values (time/random/UUID) that screen logic may want to record and replay,
+ * this project uses [ActionEvent] with stable `name` + `details` shapes:
+ *
+ * - `name = "ND_TIME"`
+ *   - `details = {"nowMs": <Long>}`
+ *
+ * - `name = "ND_UUID"`
+ *   - `details = {"value": <String>}`
+ *
+ * - `name = "ND_RANDOM_INT"`
+ *   - `details = {"from": <Int>, "until": <Int>, "value": <Int>}`
  */
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable

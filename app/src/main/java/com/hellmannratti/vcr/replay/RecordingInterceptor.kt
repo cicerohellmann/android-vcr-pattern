@@ -14,6 +14,8 @@ import java.util.*
  */
 class RecordingInterceptor(
     private val recorder: SessionRecorder,
+    private val clock: Clock = SystemClock,
+    private val idGenerator: IdGenerator = UuidGenerator,
     private val modeProvider: () -> Mode = { Mode.PASSTHROUGH }
 ) : Interceptor {
 
@@ -21,15 +23,15 @@ class RecordingInterceptor(
         // Only active in RECORD mode; otherwise pass-through
         if (modeProvider() != Mode.RECORD) return chain.proceed(chain.request())
         val request = chain.request()
-        val startNs = System.nanoTime()
-        val requestId = UUID.randomUUID().toString()
+        val startNs = clock.nowNs()
+        val requestId = idGenerator.uuid()
 
         val bodyHash = safeBodySha256(request.body)
 
         // Log request event first
         recorder.log(
             RequestEvent(
-                ts = System.currentTimeMillis(),
+                ts = clock.nowMs(),
                 requestId = requestId,
                 method = request.method,
                 url = request.url.toString(),
@@ -43,7 +45,7 @@ class RecordingInterceptor(
             throw t
         }
 
-        val tookMs = (System.nanoTime() - startNs) / 1_000_000
+        val tookMs = (clock.nowNs() - startNs) / 1_000_000
 
         // Read the body as string, then rebuild the response to keep downstream consumers working
         val mediaType = response.body?.contentType()
@@ -58,7 +60,7 @@ class RecordingInterceptor(
 
         recorder.log(
             ResponseEvent(
-                ts = System.currentTimeMillis(),
+                ts = clock.nowMs(),
                 requestId = requestId,
                 code = response.code,
                 headers = sanitizedHeaders,

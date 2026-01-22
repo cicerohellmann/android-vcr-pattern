@@ -150,23 +150,32 @@ object TapeLoader {
     /**
      * Save a ReplayTape back to an NDJSON file. Overwrites existing file.
      */
-    fun save(file: File, tape: ReplayTape, logger: TapeLogger = TapeLogger.NoOp) {
+    fun save(
+        file: File,
+        tape: ReplayTape,
+        logger: TapeLogger = TapeLogger.NoOp,
+        clock: Clock = SystemClock,
+        idGenerator: IdGenerator = UuidGenerator
+    ) {
         val json = Json { classDiscriminator = "type" }
         file.parentFile?.mkdirs()
         val lines = mutableListOf<String>()
         // Helpful session marker for humans; players ignore it
-        lines += json.encodeToString(Event.serializer(), SessionStartEvent(ts = System.currentTimeMillis(), appVersion = "unknown", device = "unknown"))
+        lines += json.encodeToString(
+            Event.serializer(),
+            SessionStartEvent(ts = clock.nowMs(), appVersion = "unknown", device = "unknown")
+        )
         for ((key, _, resp) in tape.entries()) {
-            val requestId = java.util.UUID.randomUUID().toString()
+            val requestId = idGenerator.uuid()
             val req = RequestEvent(
-                ts = System.currentTimeMillis(),
+                ts = clock.nowMs(),
                 requestId = requestId,
                 method = key.method,
                 url = key.url,
                 bodySha256 = key.bodySha256
             )
             val res = ResponseEvent(
-                ts = System.currentTimeMillis(),
+                ts = clock.nowMs(),
                 requestId = requestId,
                 code = resp.code,
                 headers = resp.headers,

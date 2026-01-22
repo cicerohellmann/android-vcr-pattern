@@ -57,6 +57,20 @@ The VCR pattern is inspired by old video cassette recorders:
 
 ---
 
+### Task Number Tree (roadmap)
+
+This repository is organized as a numbered task sequence under `tasks/`.
+
+- **01 — Discover Current Seams** (done)
+- **02 — Define UiEvent Boundary** (done)
+- **03 — Abstract Nondeterminism** (done)
+- **04 — Recording Schema** (todo)
+- **05 — Sessionkit Module** (todo)
+- **06 — Player & Controls** (todo)
+- **07 — Replay Gating** (todo)
+- **08 — QA → Dev UX** (todo)
+- **09 — Testing** (todo)
+
 ### Project Architecture
 
 This is a single-module Android application that implements the VCR pattern for HTTP recording and replay.
@@ -82,7 +96,7 @@ The application contains all the VCR pattern logic organized into packages:
   - `okHttp` - OkHttpClient configured with appropriate interceptors
   - `config` - Current AppConfig (mode and tape file)
   - `currentMode` - StateFlow for observing runtime mode changes
-  - `random` - Random instance for generating test data
+  - Task 03 ports: `clock`, `idGenerator`, `randomProvider` (injectable nondeterminism)
   - `switchMode(newMode)` - Switch between RECORD/REPLAY/PASSTHROUGH at runtime
   - `updateHttpClientWithTape(replayer)` - Update client with a new tape file
   - `clearBuffer()` - Clear the recording buffer without deleting the file
@@ -141,14 +155,14 @@ When the app makes an HTTP request in RECORD mode:
 1. **Request Interception** (`RecordingInterceptor.intercept()`)
    ```kotlin
    // Generate unique ID for this request
-   val requestId = UUID.randomUUID().toString()
+   val requestId = idGenerator.uuid()
    
    // Hash the request body (if present)
    val bodyHash = safeBodySha256(request.body)
    
    // Log REQUEST event
    recorder.log(RequestEvent(
-       ts = System.currentTimeMillis(),
+       ts = clock.nowMs(),
        requestId = requestId,
        method = "GET",
        url = "https://pokeapi.co/api/v2/pokemon/25",
@@ -167,7 +181,7 @@ When the app makes an HTTP request in RECORD mode:
    
    // Log RESPONSE event
    recorder.log(ResponseEvent(
-       ts = System.currentTimeMillis(),
+       ts = clock.nowMs(),
        requestId = requestId,
        code = 200,
        headers = sanitizedHeaders,

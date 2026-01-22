@@ -3,9 +3,15 @@ package com.hellmannratti.vcr
 import android.app.Application
 import android.content.Context
 import com.hellmannratti.vcr.framework.HttpClients.client
+import com.hellmannratti.vcr.replay.Clock
 import com.hellmannratti.vcr.replay.AppConfig
+import com.hellmannratti.vcr.replay.IdGenerator
+import com.hellmannratti.vcr.replay.KotlinRandomProvider
 import com.hellmannratti.vcr.replay.Mode
+import com.hellmannratti.vcr.replay.RandomProvider
 import com.hellmannratti.vcr.replay.SessionRecorder
+import com.hellmannratti.vcr.replay.SystemClock
+import com.hellmannratti.vcr.replay.UuidGenerator
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,10 +31,10 @@ class VcrApp : Application() {
     lateinit  var config: AppConfig
         private set
 
-    // Use default random - pattern matching makes replay independent of random sequence
-    val random: kotlin.random.Random by lazy {
-        kotlin.random.Random.Default
-    }
+    // Task 03: nondeterminism ports used across the app (swappable for tests/replay).
+    val clock: Clock = SystemClock
+    val idGenerator: IdGenerator = UuidGenerator
+    val randomProvider: RandomProvider = KotlinRandomProvider(kotlin.random.Random.Default)
 
 
     // Runtime mode state for switching between RECORD and REPLAY
@@ -68,6 +74,7 @@ class VcrApp : Application() {
         recorder = SessionRecorder(
             baseDir = filesDir,
             logSessionStart = config.mode != Mode.REPLAY,
+            clock = clock,
             appVersion = "1.0",
             device = android.os.Build.MODEL ?: "unknown"
         )
@@ -88,6 +95,7 @@ class VcrApp : Application() {
         recorder = SessionRecorder(
                     baseDir = filesDir,
                     logSessionStart = config.mode != Mode.REPLAY,
+                    clock = clock,
                     appVersion = "1.0",
                     device = android.os.Build.MODEL ?: "unknown"
                 )
