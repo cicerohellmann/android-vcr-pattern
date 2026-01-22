@@ -92,14 +92,15 @@ class MainActivity : ComponentActivity() {
                 val patterns = listOf(
                     com.hellmannratti.vcr.replay.UrlPattern.fromRetrofitStyle("https://pokeapi.co/api/v2/pokemon/{id}")
                 )
-                
+
                 // Load the tape
                 val tape = TapeLoader.loadLatestSession(destFile, patterns)
 
                 // Recreate the HTTP client with the new tape
-                val replayer = com.hellmannratti.vcr.replay.ReplayerInterceptor() { Mode.REPLAY }.apply {
-                    this.tape = tape
-                }
+                val replayer =
+                    com.hellmannratti.vcr.replay.ReplayerInterceptor() { Mode.REPLAY }.apply {
+                        this.tape = tape
+                    }
 
                 // Update the app's HTTP client with the new replayer
                 app.updateHttpClientWithTape(replayer)
@@ -154,7 +155,7 @@ class MainActivity : ComponentActivity() {
         val request = Request.Builder()
             .url(url)
             .build()
-        
+
         return withContext(Dispatchers.IO) {
             val response = app.okHttp.newCall(request).execute()
             if (!response.isSuccessful) error("HTTP ${response.code}")
@@ -182,13 +183,16 @@ class MainActivity : ComponentActivity() {
                 val id = apiType.id ?: app.random.nextInt(1, 1026)
                 fetchData("https://pokeapi.co/api/v2/pokemon/$id")
             }
+
             is ApiType.GitHub -> {
                 fetchData("https://api.github.com/users/${apiType.username}")
             }
+
             is ApiType.JsonPlaceholder -> {
                 val id = apiType.id ?: app.random.nextInt(1, 101)
                 fetchData("https://jsonplaceholder.typicode.com/${apiType.endpoint}/$id")
             }
+
             is ApiType.Custom -> {
                 fetchData(apiType.url)
             }
@@ -460,7 +464,7 @@ private fun ApiTestScreen(modifier: Modifier = Modifier) {
         Button(onClick = {
             state = UiState.Loading
             showModal = false
-            
+
             // Launch the network call tied to the Activity lifecycle
             activity.lifecycleScope.launch {
                 runCatching { activity.fetchRandomPokemon() }
@@ -480,7 +484,7 @@ private fun ApiTestScreen(modifier: Modifier = Modifier) {
             showModal = false
             activity.lifecycleScope.launch {
                 val apiType = ApiType.GitHub("torvalds")
-                runCatching { 
+                runCatching {
                     activity.fetchFromApi(apiType)
                 }
                     .onSuccess { response ->
@@ -499,7 +503,7 @@ private fun ApiTestScreen(modifier: Modifier = Modifier) {
             showModal = false
             activity.lifecycleScope.launch {
                 val apiType = ApiType.JsonPlaceholder("posts")
-                runCatching { 
+                runCatching {
                     activity.fetchFromApi(apiType)
                 }
                     .onSuccess { response ->
@@ -532,7 +536,7 @@ private fun ApiTestScreen(modifier: Modifier = Modifier) {
                     Text("Download")
                 }
             }
-            
+
             // Clear Buffer button
             Button(
                 onClick = { showClearBufferDialog = true },
@@ -540,7 +544,7 @@ private fun ApiTestScreen(modifier: Modifier = Modifier) {
             ) {
                 Text("Clear Buffer")
             }
-            
+
             // Delete Session File button with confirmation dialog
             Button(
                 onClick = { showDeleteFileDialog = true },
@@ -619,7 +623,7 @@ private fun ApiTestScreen(modifier: Modifier = Modifier) {
             onDismiss = { showModal = false }
         )
     }
-    
+
     // Show modal when generic API response is loaded
     if (showModal && state is UiState.LoadedGeneric) {
         GenericApiModal(
@@ -779,7 +783,7 @@ private fun GenericApiModal(response: String, apiType: ApiType, onDismiss: () ->
         is ApiType.JsonPlaceholder -> "JSONPlaceholder API Response"
         is ApiType.Custom -> "Custom API Response"
     }
-    
+
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {

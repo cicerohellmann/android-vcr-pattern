@@ -62,6 +62,7 @@ class VcrApp : Application() {
     /**
      * Clear the buffer by recreating the SessionRecorder instance.
      * This clears any pending writes in the executor queue without deleting the file.
+     * Also rebuilds the HTTP client to restore recording capability.
      */
     fun clearBuffer() {
         recorder = SessionRecorder(
@@ -69,6 +70,14 @@ class VcrApp : Application() {
             logSessionStart = config.mode != Mode.REPLAY,
             appVersion = "1.0",
             device = android.os.Build.MODEL ?: "unknown"
+        )
+        
+        // IMPORTANT: Rebuild the HTTP client to restore recording capability
+        // This ensures that after loading a tape (which replaces the client with a replayer),
+        // clearing the buffer will restore the recording interceptor
+        okHttp = client(
+            context = this,
+            config = config
         )
     }
 
