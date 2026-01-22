@@ -21,6 +21,8 @@ class VcrApp : Application() {
     lateinit var sessionKit: SessionKit
         private set
 
+    val replayController: ReplayController by lazy { ReplayController() }
+
     val clock = SystemClock
     val idGenerator = UuidGenerator
     val randomProvider: RandomProvider = KotlinRandomProvider(kotlin.random.Random.Default)

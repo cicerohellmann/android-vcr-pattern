@@ -225,7 +225,7 @@ internal object TapeLoader {
         normalizeUrl: (String) -> String
     ): ReplayTape {
         val requestById = mutableMapOf<String, RequestEvent>()
-        val map = mutableMapOf<RequestKey, ArrayDeque<RecordedResponse>>()
+        val map = mutableMapOf<RequestKey, MutableList<RecordedResponse>>()
 
         for (event in events) {
             when (event) {
@@ -234,7 +234,7 @@ internal object TapeLoader {
                     val req = requestById[event.requestId] ?: continue
                     val normalizedUrl = normalizeUrl(req.url)
                     val key = RequestKey(req.method, normalizedUrl, req.bodySha256)
-                    map.getOrPut(key) { ArrayDeque() }.add(
+                    map.getOrPut(key) { mutableListOf() }.add(
                         RecordedResponse(event.code, event.headers, event.body, event.durationMs)
                     )
                 }
@@ -243,6 +243,7 @@ internal object TapeLoader {
             }
         }
 
-        return ReplayTape(map, patterns)
+        val frozen = map.mapValues { (_, v) -> v.toList() }
+        return ReplayTape(frozen, patterns)
     }
 }

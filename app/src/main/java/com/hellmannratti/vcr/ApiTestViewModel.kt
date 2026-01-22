@@ -43,17 +43,19 @@ class ApiTestViewModel(
 
     private var fetchJob: Job? = null
 
-    private val player = SessionPlayer(
-        scope = viewModelScope,
-        emitUiEvent = { recorded ->
-            decodeRecordedUiEvent(recorded)?.let { decoded ->
+    private val replayHandler = object : ReplayController.Handler {
+        override suspend fun emitUiEvent(event: SessionPlayer.RecordedUiEvent) {
+            decodeRecordedUiEvent(event)?.let { decoded ->
                 onEvent(decoded, fromPlayer = true)
             }
-        },
-        resetToInitialState = {
+        }
+
+        override suspend fun resetToInitialState() {
             resetForReplay()
         }
-    )
+    }
+
+    private val player: SessionPlayer = app.replayController.player
 
     private val _state = MutableStateFlow(ApiUiState(mode = app.currentMode.value))
     val state: StateFlow<ApiUiState> = _state.asStateFlow()
@@ -62,6 +64,7 @@ class ApiTestViewModel(
     val effects: SharedFlow<UiEffect> = _effects.asSharedFlow()
 
     init {
+        app.replayController.attachHandler(replayHandler)
         viewModelScope.launch {
             app.currentMode.collectLatest { mode ->
                 _state.update { it.copy(mode = mode) }
@@ -82,6 +85,11 @@ class ApiTestViewModel(
                 }
             }
         }
+    }
+
+    override fun onCleared() {
+        app.replayController.detachHandler(replayHandler)
+        super.onCleared()
     }
 
     fun onEvent(event: UiEvent, fromPlayer: Boolean = false) {
@@ -115,7 +123,13 @@ class ApiTestViewModel(
             UiEvent.PlayerStepFwd -> viewModelScope.launch { player.stepForward() }
             UiEvent.PlayerStepBack -> viewModelScope.launch { player.stepBack() }
             is UiEvent.PlayerSeek -> viewModelScope.launch { player.seek(event.position) }
+            UiEvent.PlayerStop -> stopReplay()
         }
+    }
+
+    private fun stopReplay() {
+        player.stopAndUnload()
+        resetForReplay()
     }
 
     private fun fetchRandomPokemon() {
@@ -346,6 +360,7 @@ class ApiTestViewModel(
 
     private fun resetForReplay() {
         fetchJob?.cancel()
+        app.sessionKit.resetReplayCursors()
         _state.update {
             it.copy(
                 content = ScreenContent.Idle,
@@ -388,7 +403,13 @@ class ApiTestViewModel(
             UiEvent.PlayerPause,
             UiEvent.PlayerStepFwd,
             UiEvent.PlayerStepBack,
-            is UiEvent.PlayerSeek -> false
+            is UiEvent.PlayerSeek,
+            UiEvent.PlayerStop,
+
+            // Always allow dismissing transient UI while replay is active.
+            UiEvent.DismissModal,
+            UiEvent.DismissClearBufferDialog,
+            UiEvent.DismissDeleteFileDialog -> false
 
             else -> true
         }
@@ -480,6 +501,7 @@ class ApiTestViewModel(
             UiEvent.PlayerStepFwd -> "PlayerStepFwd"
             UiEvent.PlayerStepBack -> "PlayerStepBack"
             is UiEvent.PlayerSeek -> "PlayerSeek"
+            UiEvent.PlayerStop -> "PlayerStop"
         }
 
         val payload: Map<String, JsonElement> = when (event) {
@@ -555,6 +577,7 @@ sealed class UiEvent {
     data object PlayerStepFwd : UiEvent()
     data object PlayerStepBack : UiEvent()
     data class PlayerSeek(val position: Int) : UiEvent()
+    data object PlayerStop : UiEvent()
 }
 
 sealed class UiEffect {

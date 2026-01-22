@@ -13,10 +13,12 @@ internal data class RecordedResponse(
 )
 
 internal class ReplayTape(
-    private val map: MutableMap<RequestKey, ArrayDeque<RecordedResponse>>,
+    private val map: Map<RequestKey, List<RecordedResponse>>,
     private val patterns: List<UrlPattern> = emptyList()
 ) {
     val uniqueRequestCount: Int get() = map.size
+
+    private val cursor = mutableMapOf<RequestKey, Int>()
 
     private fun canonicalUrl(url: HttpUrl): String = url.toString()
 
@@ -36,19 +38,28 @@ internal class ReplayTape(
     }
 
     fun find(request: Request, bodySha256: String?): RecordedResponse? {
-        map[key(request, bodySha256)]?.removeFirstOrNull()?.let { return it }
-        if (bodySha256 != null) {
-            map[key(request, null)]?.removeFirstOrNull()?.let { return it }
+        fun nextFor(k: RequestKey): RecordedResponse? {
+            val list = map[k] ?: return null
+            val i = cursor[k] ?: 0
+            if (i !in list.indices) return null
+            cursor[k] = i + 1
+            return list[i]
         }
-        return null
+
+        val k1 = key(request, bodySha256)
+        val k2 = if (bodySha256 != null) key(request, null) else null
+
+        return nextFor(k1) ?: (k2?.let(::nextFor))
+    }
+
+    fun resetCursors() {
+        cursor.clear()
     }
 
     fun entries(): Sequence<Triple<RequestKey, Int, RecordedResponse>> = sequence {
-        for ((k, q) in map) {
-            var i = 0
-            for (r in q) {
-                yield(Triple(k, i, r))
-                i++
+        for ((k, list) in map) {
+            for (i in list.indices) {
+                yield(Triple(k, i, list[i]))
             }
         }
     }

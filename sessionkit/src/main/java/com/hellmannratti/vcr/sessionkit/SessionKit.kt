@@ -33,6 +33,7 @@ class SessionKit(
         device = config.device
     )
 
+    private var replayerInterceptor: ReplayerInterceptor? = null
     private var okHttp: OkHttpClient = buildOkHttp()
     private var loadedTapeFile: File? = null
 
@@ -67,6 +68,17 @@ class SessionKit(
                 t
             )
         }
+    }
+
+    /**
+     * Reset replay-side effects to make "rewind" deterministic.
+     *
+     * In REPLAY mode, the HTTP tape must not be consumed destructively; we keep a cursor per
+     * request key. When the UI resets to initial state (seeking backwards), call this to reset
+     * those cursors so earlier requests can be served again.
+     */
+    fun resetReplayCursors() {
+        replayerInterceptor?.tape?.resetCursors()
     }
 
     fun clearBuffer() {
@@ -127,8 +139,12 @@ class SessionKit(
         val activeRecorder = recorderOverride ?: recorder
 
         return when (config.mode) {
-            Mode.PASSTHROUGH -> OkHttpClient.Builder().build()
+            Mode.PASSTHROUGH -> {
+                replayerInterceptor = null
+                OkHttpClient.Builder().build()
+            }
             Mode.RECORD -> {
+                replayerInterceptor = null
                 OkHttpClient.Builder()
                     .addInterceptor(
                         RecordingInterceptor(
@@ -145,15 +161,18 @@ class SessionKit(
                     val replayer = ReplayerInterceptor(logger) { config.mode }.apply {
                         tape = TapeLoader.loadLatestSession(tapeFile, urlPatterns, logger)
                     }
+                    replayerInterceptor = replayer
                     OkHttpClient.Builder()
                         .addInterceptor(replayer)
                         .build()
                 } catch (e: NoTapeFoundException) {
+                    replayerInterceptor = null
                     logger.w("SessionKit", "No tape found, using passthrough mode: ${e.message}")
                     OkHttpClient.Builder().build()
                 } catch (t: Throwable) {
                     // Startup / mode switch failures shouldn't crash the app.
                     // Persist diagnostics and fall back to passthrough.
+                    replayerInterceptor = null
                     persistTapeLoadError(tapeFile = tapeFile, throwable = t)
                     OkHttpClient.Builder().build()
                 }

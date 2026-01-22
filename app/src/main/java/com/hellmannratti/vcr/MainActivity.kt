@@ -1,6 +1,10 @@
 package com.hellmannratti.vcr
 
 import android.os.Bundle
+import android.content.Intent
+import android.provider.Settings
+import android.net.Uri
+import android.os.Build
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -22,7 +26,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -44,7 +47,6 @@ import com.hellmannratti.vcr.sessionkit.Mode
 import com.hellmannratti.vcr.ui.theme.VcrTheme
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
     private val app by lazy { VcrApp.from(this) }
@@ -138,6 +140,20 @@ private fun ApiTestScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
+
+    val overlayPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) {
+        if (Settings.canDrawOverlays(context)) {
+            FloatingControllerService.start(context)
+        }
+    }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) {
+        // no-op
+    }
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
@@ -262,6 +278,37 @@ private fun ApiTestScreen(
             }
         }
 
+        if (state.mode == Mode.REPLAY) {
+            Button(
+                onClick = {
+                    // Notification permission for Android 13+
+                    if (Build.VERSION.SDK_INT >= 33) {
+                        notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                    }
+
+                    if (!Settings.canDrawOverlays(context)) {
+                        val intent = Intent(
+                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            Uri.parse("package:${context.packageName}")
+                        )
+                        overlayPermissionLauncher.launch(intent)
+                    } else {
+                        FloatingControllerService.start(context)
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Start Floating Overlay Controls")
+            }
+
+            Button(
+                onClick = { FloatingControllerService.stop(context) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Stop Floating Overlay Controls")
+            }
+        }
+
         // Show file picker when in REPLAY mode
         if (state.mode == Mode.REPLAY) {
             Button(
@@ -269,66 +316,6 @@ private fun ApiTestScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Load Tape from Downloads")
-            }
-
-            if (state.player.loaded) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = "Player: ${state.player.position}/${state.player.total}",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Button(
-                                onClick = { viewModel.onEvent(UiEvent.PlayerStepBack) },
-                                modifier = Modifier.weight(1f)
-                            ) { Text("Step Back") }
-
-                            Button(
-                                onClick = { viewModel.onEvent(UiEvent.PlayerTogglePlay) },
-                                modifier = Modifier.weight(1f)
-                            ) { Text(if (state.player.playing) "Pause" else "Play") }
-
-                            Button(
-                                onClick = { viewModel.onEvent(UiEvent.PlayerStepFwd) },
-                                modifier = Modifier.weight(1f)
-                            ) { Text("Step Fwd") }
-                        }
-
-                        Slider(
-                            value = state.player.position.toFloat(),
-                            onValueChange = { v ->
-                                viewModel.onEvent(UiEvent.PlayerSeek(v.roundToInt()))
-                            },
-                            valueRange = 0f..state.player.total.toFloat(),
-                            steps = 0
-                        )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Button(
-                                onClick = { viewModel.onEvent(UiEvent.PlayerSeek(0)) },
-                                modifier = Modifier.weight(1f)
-                            ) { Text("Seek Start") }
-
-                            Button(
-                                onClick = { viewModel.onEvent(UiEvent.PlayerSeek(state.player.total)) },
-                                modifier = Modifier.weight(1f)
-                            ) { Text("Seek End") }
-                        }
-                    }
-                }
             }
         }
     }
@@ -401,6 +388,7 @@ private fun ApiTestScreen(
             )
         }
     }
+
 }
 
 @Composable
