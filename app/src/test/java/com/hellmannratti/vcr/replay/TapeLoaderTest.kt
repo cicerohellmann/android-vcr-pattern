@@ -34,16 +34,16 @@ class TapeLoaderTest {
         val f = tmp.newFile("multi.ndjson")
         val lines = mutableListOf<String>()
         // First session
-        lines += ev(SessionStartEvent(1, "1.0", "emulator"))
-        lines += ev(RequestEvent(2, "r1", "GET", "https://x/a"))
-        lines += ev(ResponseEvent(3, "r1", 200, mapOf(), "a", 0))
+        lines += ev(SessionStartEvent(seq = 0, ts = 1, appVersion = "1.0", device = "emulator"))
+        lines += ev(RequestEvent(seq = 1, ts = 2, requestId = "r1", method = "GET", url = "https://x/a"))
+        lines += ev(ResponseEvent(seq = 2, ts = 3, requestId = "r1", code = 200, headers = mapOf(), body = "a", durationMs = 0))
         // Second session, incomplete (no response)
-        lines += ev(SessionStartEvent(4, "1.0", "emulator"))
-        lines += ev(RequestEvent(5, "r2", "GET", "https://x/b"))
+        lines += ev(SessionStartEvent(seq = 3, ts = 4, appVersion = "1.0", device = "emulator"))
+        lines += ev(RequestEvent(seq = 4, ts = 5, requestId = "r2", method = "GET", url = "https://x/b"))
         // Third session, complete
-        lines += ev(SessionStartEvent(6, "1.0", "emulator"))
-        lines += ev(RequestEvent(7, "r3", "POST", "https://x/c", bodySha256 = "abc"))
-        lines += ev(ResponseEvent(8, "r3", 201, mapOf("content-type" to "text/plain"), "ok", 1))
+        lines += ev(SessionStartEvent(seq = 5, ts = 6, appVersion = "1.0", device = "emulator"))
+        lines += ev(RequestEvent(seq = 6, ts = 7, requestId = "r3", method = "POST", url = "https://x/c", bodySha256 = "abc"))
+        lines += ev(ResponseEvent(seq = 7, ts = 8, requestId = "r3", code = 201, headers = mapOf("content-type" to "text/plain"), body = "ok", durationMs = 1))
 
         writeLines(f, lines)
         val tape = TapeLoader.loadLatestSession(f, logger = object : TapeLogger {
@@ -91,5 +91,18 @@ class TapeLoaderTest {
                 assertEquals(l1[i].durationMs, l2[i].durationMs)
             }
         }
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun `loadFromFile rejects non-monotonic seq`() {
+        val f = tmp.newFile("bad-seq.ndjson")
+        val lines = listOf(
+            ev(SessionStartEvent(seq = 0, ts = 1, appVersion = "1.0", device = "emulator")),
+            ev(RequestEvent(seq = 2, ts = 2, requestId = "r1", method = "GET", url = "https://x/a")),
+            // seq goes backwards
+            ev(ResponseEvent(seq = 1, ts = 3, requestId = "r1", code = 200, headers = mapOf(), body = "a", durationMs = 0))
+        )
+        writeLines(f, lines)
+        TapeLoader.loadFromFile(f)
     }
 }

@@ -28,13 +28,26 @@ import kotlinx.serialization.json.JsonElement
 @Serializable
 @JsonClassDiscriminator("type")
 sealed interface Event {
-    val ts: Long
+    /** Schema version for a single NDJSON line. */
+    val schema: Int
+
+    /** Monotonic sequence number (strictly increasing within a file). */
+    val seq: Long
+
+    /** Optional wall-clock timestamp (milliseconds since epoch). Not used for ordering. */
+    val ts: Long?
+
+    /** Optional metadata (e.g., sessionId, appVersion, device, mode). */
+    val metadata: Map<String, String>
 }
 
 @Serializable
 @SerialName("SESSION_START")
 data class SessionStartEvent(
-    override val ts: Long,
+    override val schema: Int = 1,
+    override val seq: Long,
+    override val ts: Long? = null,
+    override val metadata: Map<String, String> = emptyMap(),
     val appVersion: String,
     val device: String
 ) : Event
@@ -42,15 +55,33 @@ data class SessionStartEvent(
 @Serializable
 @SerialName("ACTION")
 data class ActionEvent(
-    override val ts: Long,
+    override val schema: Int = 1,
+    override val seq: Long,
+    override val ts: Long? = null,
+    override val metadata: Map<String, String> = emptyMap(),
     val name: String,
     val details: Map<String, JsonElement> = emptyMap()
 ) : Event
 
 @Serializable
+@SerialName("UI_EVENT")
+data class UiEventRecorded(
+    override val schema: Int = 1,
+    override val seq: Long,
+    override val ts: Long? = null,
+    override val metadata: Map<String, String> = emptyMap(),
+    val screen: String,
+    val event: String,
+    val payload: Map<String, JsonElement> = emptyMap()
+) : Event
+
+@Serializable
 @SerialName("REQUEST")
 data class RequestEvent(
-    override val ts: Long,
+    override val schema: Int = 1,
+    override val seq: Long,
+    override val ts: Long? = null,
+    override val metadata: Map<String, String> = emptyMap(),
     val requestId: String,
     val method: String,
     val url: String,
@@ -60,7 +91,10 @@ data class RequestEvent(
 @Serializable
 @SerialName("RESPONSE")
 data class ResponseEvent(
-    override val ts: Long,
+    override val schema: Int = 1,
+    override val seq: Long,
+    override val ts: Long? = null,
+    override val metadata: Map<String, String> = emptyMap(),
     val requestId: String,
     val code: Int,
     val headers: Map<String, String>,

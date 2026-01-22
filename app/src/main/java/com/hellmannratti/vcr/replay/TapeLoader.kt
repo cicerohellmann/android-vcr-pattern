@@ -1,5 +1,7 @@
 package com.hellmannratti.vcr.replay
 
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import okio.buffer
 import okio.source
@@ -15,8 +17,12 @@ object TapeLoader {
             classDiscriminator = "type"
         }
 
-        val requestById = mutableMapOf<String, RequestEvent>()
-        val map = mutableMapOf<RequestKey, ArrayDeque<RecordedResponse>>()
+        val lines = mutableListOf<String>()
+        file.source().buffer().use { buf ->
+            while (!buf.exhausted()) buf.readUtf8Line()?.let(lines::add)
+        }
+
+        val events = parseAndValidateEvents(lines, json)
 
         // Helper function to normalize URL using patterns
         fun normalizeUrl(url: String): String {
@@ -28,33 +34,7 @@ object TapeLoader {
             return url
         }
 
-        file.source().buffer().use { buf ->
-            while (!buf.exhausted()) {
-                val line = buf.readUtf8Line() ?: continue
-                // Skip meta lines that don't parse into Event
-                val event = runCatching { json.decodeFromString<Event>(line) }.getOrNull() ?: continue
-                when (event) {
-                    is RequestEvent -> requestById[event.requestId] = event
-                    is ResponseEvent -> {
-                        val req = requestById[event.requestId] ?: continue
-                        val normalizedUrl = normalizeUrl(req.url)
-                        val key = RequestKey(req.method, normalizedUrl, req.bodySha256)
-                        val queue = map.getOrPut(key) { ArrayDeque() }
-                        queue.add(
-                            RecordedResponse(
-                                code = event.code,
-                                headers = event.headers,
-                                body = event.body,
-                                durationMs = event.durationMs
-                            )
-                        )
-                    }
-                    else -> Unit
-                }
-            }
-        }
-
-        return ReplayTape(map, patterns)
+        return buildReplayTape(events, patterns, ::normalizeUrl)
     }
 
     /**
@@ -84,25 +64,7 @@ object TapeLoader {
             while (!buf.exhausted()) buf.readUtf8Line()?.let(lines::add)
         }
 
-        // Find index of the last RESPONSE
-        var lastResponseIdx = -1
-        for (i in lines.lastIndex downTo 0) {
-            val e = runCatching { json.decodeFromString<Event>(lines[i]) }.getOrNull()
-            if (e is ResponseEvent) { lastResponseIdx = i; break }
-        }
-
-        // Find the most recent SESSION_START before that RESPONSE
-        val startIdx = if (lastResponseIdx >= 0) {
-            var s = 0
-            for (i in lastResponseIdx downTo 0) {
-                val e = runCatching { json.decodeFromString<Event>(lines[i]) }.getOrNull()
-                if (e is SessionStartEvent) { s = i; break }
-            }
-            s
-        } else 0
-
-        val requestById = mutableMapOf<String, RequestEvent>()
-        val map = mutableMapOf<RequestKey, ArrayDeque<RecordedResponse>>()
+        val events = parseAndValidateEvents(lines, json)
 
         // Helper function to normalize URL using patterns
         fun normalizeUrl(url: String): String {
@@ -114,37 +76,25 @@ object TapeLoader {
             return url
         }
 
-        for (i in startIdx..lines.lastIndex) {
-            val event = runCatching { json.decodeFromString<Event>(lines[i]) }.getOrNull() ?: continue
-            when (event) {
-                is RequestEvent -> requestById[event.requestId] = event
-                is ResponseEvent -> {
-                    val req = requestById[event.requestId] ?: continue
-                    val normalizedUrl = normalizeUrl(req.url)
-                    val key = RequestKey(req.method, normalizedUrl, req.bodySha256)
-                    map.getOrPut(key) { ArrayDeque() }.add(
-                        RecordedResponse(event.code, event.headers, event.body, event.durationMs)
-                    )
-                }
-                else -> Unit
-            }
-        }
+        val sessionEvents = latestSessionSlice(events)
+
+        val tape = buildReplayTape(sessionEvents, patterns, ::normalizeUrl)
 
         // Log tape statistics
-        val totalResponses = map.values.sumOf { it.size }
-        logger.i("TapeLoader", "Loaded tape from ${file.name}: ${map.size} unique requests, $totalResponses total responses")
+        val totalResponses = tape.entries().count()
+        logger.i("TapeLoader", "Loaded tape from ${file.name}: ${tape.uniqueRequestCount} unique requests, $totalResponses total responses")
 
-        if (map.isEmpty()) {
+        if (tape.uniqueRequestCount == 0) {
             logger.e("TapeLoader", "Tape is empty! No recorded responses found in session.")
             throw NoTapeFoundException("Tape file exists but contains no recorded responses: ${file.absolutePath}")
         } else {
             logger.d("TapeLoader", "Tape contents:")
-            map.forEach { (key, responses) ->
+            tape.entries().groupBy({ it.first }, { it.third }).forEach { (key, responses) ->
                 logger.d("TapeLoader", "  ${key.method} ${key.url} (bodySha256=${key.bodySha256 ?: "null"}): ${responses.size} response(s)")
             }
         }
 
-        return ReplayTape(map, patterns)
+        return tape
     }
 
     /**
@@ -160,14 +110,16 @@ object TapeLoader {
         val json = Json { classDiscriminator = "type" }
         file.parentFile?.mkdirs()
         val lines = mutableListOf<String>()
+        var seq = 0L
         // Helpful session marker for humans; players ignore it
         lines += json.encodeToString(
             Event.serializer(),
-            SessionStartEvent(ts = clock.nowMs(), appVersion = "unknown", device = "unknown")
+            SessionStartEvent(seq = seq++, ts = clock.nowMs(), appVersion = "unknown", device = "unknown")
         )
         for ((key, _, resp) in tape.entries()) {
             val requestId = idGenerator.uuid()
             val req = RequestEvent(
+                seq = seq++,
                 ts = clock.nowMs(),
                 requestId = requestId,
                 method = key.method,
@@ -175,6 +127,7 @@ object TapeLoader {
                 bodySha256 = key.bodySha256
             )
             val res = ResponseEvent(
+                seq = seq++,
                 ts = clock.nowMs(),
                 requestId = requestId,
                 code = resp.code,
@@ -188,5 +141,76 @@ object TapeLoader {
         file.writeText(lines.joinToString(separator = "\n", postfix = "\n"))
         val total = lines.count { it.contains("\"type\":\"Response\"") }
         logger.i("TapeLoader", "Saved tape to ${'$'}{file.name}: ${'$'}total responses written")
+    }
+
+    private fun parseAndValidateEvents(lines: List<String>, json: Json): List<Event> {
+        val events = lines
+            .filter { it.isNotBlank() }
+            .mapIndexed { idx, line ->
+                try {
+                    json.decodeFromString<Event>(line)
+                } catch (t: Throwable) {
+                    throw IllegalArgumentException("Malformed event at line ${idx + 1}", t)
+                }
+            }
+
+        var lastSeq: Long? = null
+        val requestIds = mutableSetOf<String>()
+        for (e in events) {
+            require(e.schema == 1) { "Unsupported schema version: ${e.schema}" }
+            require(e.seq >= 0) { "Invalid seq: ${e.seq}" }
+            if (lastSeq != null) {
+                require(e.seq > lastSeq!!) { "Non-monotonic seq: ${e.seq} after ${lastSeq!!}" }
+            }
+            lastSeq = e.seq
+
+            when (e) {
+                is RequestEvent -> requestIds += e.requestId
+                is ResponseEvent -> require(e.requestId in requestIds) { "Response references unknown requestId: ${e.requestId}" }
+                else -> Unit
+            }
+        }
+
+        return events
+    }
+
+    private fun latestSessionSlice(events: List<Event>): List<Event> {
+        val lastResponseIdx = events.indexOfLast { it is ResponseEvent }
+        if (lastResponseIdx < 0) return events
+
+        var startIdx = 0
+        for (i in lastResponseIdx downTo 0) {
+            if (events[i] is SessionStartEvent) {
+                startIdx = i
+                break
+            }
+        }
+        return events.subList(startIdx, events.size)
+    }
+
+    private fun buildReplayTape(
+        events: List<Event>,
+        patterns: List<UrlPattern>,
+        normalizeUrl: (String) -> String
+    ): ReplayTape {
+        val requestById = mutableMapOf<String, RequestEvent>()
+        val map = mutableMapOf<RequestKey, ArrayDeque<RecordedResponse>>()
+
+        for (event in events) {
+            when (event) {
+                is RequestEvent -> requestById[event.requestId] = event
+                is ResponseEvent -> {
+                    val req = requestById[event.requestId] ?: continue
+                    val normalizedUrl = normalizeUrl(req.url)
+                    val key = RequestKey(req.method, normalizedUrl, req.bodySha256)
+                    map.getOrPut(key) { ArrayDeque() }.add(
+                        RecordedResponse(event.code, event.headers, event.body, event.durationMs)
+                    )
+                }
+                else -> Unit
+            }
+        }
+
+        return ReplayTape(map, patterns)
     }
 }

@@ -28,13 +28,13 @@ class PatternMatchingTest {
         // Create a tape file with responses for posts/4, posts/41, and posts/67
         tempTapeFile = File.createTempFile("test_pattern_tape", ".ndjson")
         tempTapeFile.writeText("""
-            {"type":"SESSION_START","ts":1234567890000,"appVersion":"1.0.0","device":"test-device"}
-            {"type":"REQUEST","ts":1234567890100,"requestId":"req-1","method":"GET","url":"https://jsonplaceholder.typicode.com/posts/4","bodySha256":null}
-            {"type":"RESPONSE","ts":1234567890200,"requestId":"req-1","code":200,"headers":{"content-type":"application/json"},"body":"{\"id\":4,\"title\":\"post 4\"}","durationMs":100}
-            {"type":"REQUEST","ts":1234567890300,"requestId":"req-2","method":"GET","url":"https://jsonplaceholder.typicode.com/posts/41","bodySha256":null}
-            {"type":"RESPONSE","ts":1234567890400,"requestId":"req-2","code":200,"headers":{"content-type":"application/json"},"body":"{\"id\":41,\"title\":\"post 41\"}","durationMs":100}
-            {"type":"REQUEST","ts":1234567890500,"requestId":"req-3","method":"GET","url":"https://jsonplaceholder.typicode.com/posts/67","bodySha256":null}
-            {"type":"RESPONSE","ts":1234567890600,"requestId":"req-3","code":200,"headers":{"content-type":"application/json"},"body":"{\"id\":67,\"title\":\"post 67\"}","durationMs":100}
+            {"schema":1,"seq":0,"type":"SESSION_START","ts":1234567890000,"metadata":{},"appVersion":"1.0.0","device":"test-device"}
+            {"schema":1,"seq":1,"type":"REQUEST","ts":1234567890100,"metadata":{},"requestId":"req-1","method":"GET","url":"https://jsonplaceholder.typicode.com/posts/4","bodySha256":null}
+            {"schema":1,"seq":2,"type":"RESPONSE","ts":1234567890200,"metadata":{},"requestId":"req-1","code":200,"headers":{"content-type":"application/json"},"body":"{\"id\":4,\"title\":\"post 4\"}","durationMs":100}
+            {"schema":1,"seq":3,"type":"REQUEST","ts":1234567890300,"metadata":{},"requestId":"req-2","method":"GET","url":"https://jsonplaceholder.typicode.com/posts/41","bodySha256":null}
+            {"schema":1,"seq":4,"type":"RESPONSE","ts":1234567890400,"metadata":{},"requestId":"req-2","code":200,"headers":{"content-type":"application/json"},"body":"{\"id\":41,\"title\":\"post 41\"}","durationMs":100}
+            {"schema":1,"seq":5,"type":"REQUEST","ts":1234567890500,"metadata":{},"requestId":"req-3","method":"GET","url":"https://jsonplaceholder.typicode.com/posts/67","bodySha256":null}
+            {"schema":1,"seq":6,"type":"RESPONSE","ts":1234567890600,"metadata":{},"requestId":"req-3","code":200,"headers":{"content-type":"application/json"},"body":"{\"id\":67,\"title\":\"post 67\"}","durationMs":100}
         """.trimIndent())
     }
     

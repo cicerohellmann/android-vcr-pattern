@@ -15,6 +15,8 @@ import com.hellmannratti.vcr.replay.Clock
 import com.hellmannratti.vcr.replay.NetworkClient
 import com.hellmannratti.vcr.replay.RandomProvider
 import com.hellmannratti.vcr.replay.Mode
+import com.hellmannratti.vcr.replay.ActionEvent
+import com.hellmannratti.vcr.replay.UiEventRecorded
 import com.hellmannratti.vcr.replay.TapeLoader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -28,6 +30,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import java.io.File
 
 class ApiTestViewModel(
@@ -52,6 +58,7 @@ class ApiTestViewModel(
     }
 
     fun onEvent(event: UiEvent) {
+        recordUiEventIfNeeded(event)
         when (event) {
             UiEvent.FetchRandomPokemon -> fetchRandomPokemon()
             is UiEvent.FetchFromApi -> fetchFromApi(event.apiType)
@@ -289,7 +296,7 @@ class ApiTestViewModel(
     }
 
     private suspend fun fetchRandomPokemonInternal(): PokemonDetail {
-        val randomId = random.nextInt(1, 1026)
+        val randomId = nextIntRecorded(1, 1026)
         val response = network.get("https://pokeapi.co/api/v2/pokemon/$randomId").requireSuccess()
         return Json { ignoreUnknownKeys = true }.decodeFromString<PokemonDetail>(response.body)
     }
@@ -307,7 +314,7 @@ class ApiTestViewModel(
     private suspend fun fetchFromApiInternal(apiType: ApiType): String {
         return when (apiType) {
             is ApiType.Pokemon -> {
-                val id = apiType.id ?: random.nextInt(1, 1026)
+                val id = apiType.id ?: nextIntRecorded(1, 1026)
                 fetchData("https://pokeapi.co/api/v2/pokemon/$id")
             }
 
@@ -316,7 +323,7 @@ class ApiTestViewModel(
             }
 
             is ApiType.JsonPlaceholder -> {
-                val id = apiType.id ?: random.nextInt(1, 101)
+                val id = apiType.id ?: nextIntRecorded(1, 101)
                 fetchData("https://jsonplaceholder.typicode.com/${apiType.endpoint}/$id")
             }
 
@@ -338,6 +345,62 @@ class ApiTestViewModel(
                 }
             }
         }
+    }
+
+    private fun recordUiEventIfNeeded(event: UiEvent) {
+        if (state.value.mode != Mode.RECORD) return
+
+        val eventName = when (event) {
+            UiEvent.FetchRandomPokemon -> "FetchRandomPokemon"
+            is UiEvent.FetchFromApi -> "FetchFromApi"
+            UiEvent.ToggleMode -> "ToggleMode"
+            UiEvent.ShareSessionLog -> "ShareSessionLog"
+            UiEvent.DownloadSessionLog -> "DownloadSessionLog"
+            UiEvent.ShowClearBufferDialog -> "ShowClearBufferDialog"
+            UiEvent.DismissClearBufferDialog -> "DismissClearBufferDialog"
+            UiEvent.ConfirmClearBuffer -> "ConfirmClearBuffer"
+            UiEvent.ShowDeleteFileDialog -> "ShowDeleteFileDialog"
+            UiEvent.DismissDeleteFileDialog -> "DismissDeleteFileDialog"
+            UiEvent.ConfirmDeleteFile -> "ConfirmDeleteFile"
+            UiEvent.RequestTapePick -> "RequestTapePick"
+            is UiEvent.OnTapePicked -> "OnTapePicked"
+            UiEvent.DismissModal -> "DismissModal"
+        }
+
+        val payload: Map<String, JsonElement> = when (event) {
+            is UiEvent.FetchFromApi -> mapOf("apiType" to JsonPrimitive(event.apiType::class.simpleName ?: "unknown"))
+            is UiEvent.OnTapePicked -> mapOf("uri" to JsonPrimitive(event.uri?.toString()))
+            else -> emptyMap()
+        }
+
+        app.recorder.log(
+            UiEventRecorded(
+                seq = -1,
+                ts = clock.nowMs(),
+                screen = "ApiTest",
+                event = eventName,
+                payload = payload
+            )
+        )
+    }
+
+    private fun nextIntRecorded(from: Int, until: Int): Int {
+        val value = random.nextInt(from, until)
+        if (state.value.mode == Mode.RECORD) {
+            app.recorder.log(
+                ActionEvent(
+                    seq = -1,
+                    ts = clock.nowMs(),
+                    name = "ND_RANDOM_INT",
+                    details = buildJsonObject {
+                        put("from", from)
+                        put("until", until)
+                        put("value", value)
+                    }
+                )
+            )
+        }
+        return value
     }
 }
 

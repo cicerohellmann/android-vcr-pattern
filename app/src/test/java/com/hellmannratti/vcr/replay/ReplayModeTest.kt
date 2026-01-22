@@ -34,9 +34,9 @@ class ReplayModeTest {
         // Create a temporary tape file with a recorded response
         tempTapeFile = File.createTempFile("test_tape", ".ndjson")
         tempTapeFile.writeText("""
-            {"type":"SESSION_START","ts":1234567890000,"appVersion":"1.0.0","device":"test-device"}
-            {"type":"REQUEST","ts":1234567890100,"requestId":"req-1","method":"GET","url":"http://example.com/api/test","bodySha256":null}
-            {"type":"RESPONSE","ts":1234567890200,"requestId":"req-1","code":200,"headers":{"content-type":"application/json"},"body":"{\"message\":\"recorded response\"}","durationMs":100}
+            {"schema":1,"seq":0,"type":"SESSION_START","ts":1234567890000,"metadata":{},"appVersion":"1.0.0","device":"test-device"}
+            {"schema":1,"seq":1,"type":"REQUEST","ts":1234567890100,"metadata":{},"requestId":"req-1","method":"GET","url":"http://example.com/api/test","bodySha256":null}
+            {"schema":1,"seq":2,"type":"RESPONSE","ts":1234567890200,"metadata":{},"requestId":"req-1","code":200,"headers":{"content-type":"application/json"},"body":"{\"message\":\"recorded response\"}","durationMs":100}
         """.trimIndent())
     }
     

@@ -31,6 +31,7 @@ class RecordingInterceptor(
         // Log request event first
         recorder.log(
             RequestEvent(
+                seq = -1,
                 ts = clock.nowMs(),
                 requestId = requestId,
                 method = request.method,
@@ -60,6 +61,7 @@ class RecordingInterceptor(
 
         recorder.log(
             ResponseEvent(
+                seq = -1,
                 ts = clock.nowMs(),
                 requestId = requestId,
                 code = response.code,

@@ -28,3 +28,23 @@
     "NEW INSTRUCTION": "WHEN search_project finds no 'ND_RANDOM_INT' or 'ND_UUID' strings THEN log ND_* events and implement corresponding replay providers"
 }
 
+[2026-01-22 15:11] - Updated by Junie - Trajectory analysis
+{
+    "PLAN QUALITY": "suboptimal",
+    "REDUNDANT STEPS": "open non-existent file,open unrelated task doc",
+    "MISSING STEPS": "add schema fields,update recorder,add validation,update docs,run build",
+    "BOTTLENECK": "No implementation was performed; only advisory text was produced.",
+    "PROJECT NOTE": "Event.kt currently lacks seq and has non-null ts; add seq and make ts optional, and assign seq in SessionRecorder using its single-thread executor.",
+    "NEW INSTRUCTION": "WHEN acceptance criteria require implementation changes THEN modify code and docs before giving guidance"
+}
+
+[2026-01-22 15:19] - Updated by Junie - Trajectory analysis
+{
+    "PLAN QUALITY": "near-optimal",
+    "REDUNDANT STEPS": "-",
+    "MISSING STEPS": "initialize seq from existing tape, run build, run tests",
+    "BOTTLENECK": "No implementation steps executed after planning.",
+    "PROJECT NOTE": "Add schema, seq, and metadata to Event.kt; make ts nullable; assign seq in SessionRecorder; validate seq and schema in TapeLoader; consider scanning events.ndjson on init to continue seq.",
+    "NEW INSTRUCTION": "WHEN schema/API changes span multiple files THEN run a full build immediately"
+}
+
