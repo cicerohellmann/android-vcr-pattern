@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.hellmannratti.vcr.sessionkit.SessionKitDiagnosticsTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-01-22T19:16:58.551Z" hostname="MacBookPro.fritz.box" time="0.16">
-  <properties/>
-  <testcase name="loadTape writes diagnostics file on malformed tape" classname="com.hellmannratti.vcr.sessionkit.SessionKitDiagnosticsTest" time="0.16"/>
-  <system-out><![CDATA[]]></system-out>
-  <system-err><![CDATA[]]></system-err>
-</testsuite>
