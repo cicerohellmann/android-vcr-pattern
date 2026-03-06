@@ -19,7 +19,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "android-vcr-pattern"
+rootProject.name = "cassete"
 include(":app")
 include(":sessionkit")
  

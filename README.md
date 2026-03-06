@@ -1,4 +1,4 @@
-### SessionKit (android-vcr-pattern)
+### SessionKit (cassete)
 
 This repository contains:
 
