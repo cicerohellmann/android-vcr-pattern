@@ -8,6 +8,9 @@ import java.io.File
  * SessionKit is the minimal app-facing seam for recording + replay.
  * The app should not need to reference tape/interceptor internals.
  */
+@Deprecated(
+    message = "Use cassete-core with cassete-okhttp or cassete-ktor instead. SessionKit remains only as a legacy compatibility module during migration."
+)
 class SessionKit(
     private var config: SessionKitConfig,
     baseDir: File,

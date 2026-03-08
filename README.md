@@ -8,7 +8,7 @@ The repository now ships adapter-based modules instead of a monolithic client-ow
 - `:cassete-okhttp` for OkHttp and Retrofit integration
 - `:cassete-ktor` for Ktor client integration
 - `:app` as the demo Android host app
-- `:sessionkit` as the legacy module kept in the repo during migration
+- `:sessionkit` as a deprecated legacy compatibility module kept in the repo during migration
 
 ## What it does
 
@@ -167,9 +167,12 @@ Useful commands:
 ./gradlew :cassete-core:compileKotlin
 ./gradlew :cassete-okhttp:test
 ./gradlew :cassete-ktor:test
+./gradlew :app:testDebugUnitTest
 ./gradlew :sessionkit:testDebugUnitTest
 ./gradlew :app:assembleDebug
 ```
+
+GitHub Actions runs the same headless verification suite on `push` and `pull_request` via `.github/workflows/ci.yml`.
 
 ## Publishing
 
@@ -199,4 +202,5 @@ This repo now has automated coverage for:
 - OkHttp record and replay behavior
 - Retrofit record and replay compatibility
 - Ktor plugin record and replay behavior with a real CIO engine
+- demo app replay gating and deterministic rewind behavior
 - demo app assembly

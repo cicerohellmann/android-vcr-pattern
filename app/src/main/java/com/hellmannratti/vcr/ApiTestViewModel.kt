@@ -40,8 +40,9 @@ class ApiTestViewModel(
     private val random: RandomProvider,
     private val network: NetworkClient
 ) : ViewModel() {
-
     private var fetchJob: Job? = null
+    private val replayInputs = ReplayNondeterminism()
+    private val json = Json { ignoreUnknownKeys = true }
 
     private val replayHandler = object : ReplayController.Handler {
         override suspend fun emitUiEvent(event: SessionPlayer.RecordedUiEvent) {
@@ -82,6 +83,15 @@ class ApiTestViewModel(
                             total = ps.total
                         )
                     )
+                }
+                when {
+                    !ps.loaded -> replayInputs.clear()
+                    ps.sourceFile != null && ps.sourceFile != replayInputs.sourceFile() -> {
+                        val sourceFile = ps.sourceFile
+                        if (sourceFile != null) {
+                            replayInputs.load(File(sourceFile))
+                        }
+                    }
                 }
             }
         }
@@ -361,6 +371,7 @@ class ApiTestViewModel(
     private fun resetForReplay() {
         fetchJob?.cancel()
         app.cassete.resetReplayCursors()
+        replayInputs.reset()
         _state.update {
             it.copy(
                 content = ScreenContent.Idle,
@@ -427,7 +438,7 @@ class ApiTestViewModel(
     private suspend fun fetchRandomPokemonInternal(): PokemonDetail {
         val randomId = nextIntRecorded(1, 1026)
         val response = network.get("https://pokeapi.co/api/v2/pokemon/$randomId").requireSuccess()
-        return Json { ignoreUnknownKeys = true }.decodeFromString<PokemonDetail>(response.body)
+        return json.decodeFromString<PokemonDetail>(response.body)
     }
 
     private suspend fun fetchData(url: String): String {
@@ -515,6 +526,10 @@ class ApiTestViewModel(
     }
 
     private fun nextIntRecorded(from: Int, until: Int): Int {
+        if (state.value.mode == Mode.REPLAY && state.value.player.loaded) {
+            return replayInputs.nextRandomInt(from, until)
+        }
+
         val value = random.nextInt(from, until)
         if (state.value.mode == Mode.RECORD) {
             app.cassete.recordAction(
