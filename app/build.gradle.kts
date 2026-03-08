@@ -63,7 +63,8 @@ dependencies {
     // JSON: Kotlinx Serialization instead of Moshi
     implementation(libs.kotlinx.serialization.json)
 
-    implementation(project(":sessionkit"))
+    implementation(project(":cassete-core"))
+    implementation(project(":cassete-okhttp"))
     // Image loading for Compose
     implementation(libs.coil.compose)
     testImplementation(libs.junit)

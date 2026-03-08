@@ -1,7 +1,7 @@
 package com.hellmannratti.vcr
 
 import com.hellmannratti.vcr.framework.AndroidTapeLogger
-import com.hellmannratti.vcr.sessionkit.SessionPlayer
+import com.hellmannratti.cassete.core.SessionPlayer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob

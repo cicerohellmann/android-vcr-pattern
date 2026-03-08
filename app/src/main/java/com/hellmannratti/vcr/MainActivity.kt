@@ -43,7 +43,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.ViewModelProvider
 import coil.compose.AsyncImage
-import com.hellmannratti.vcr.sessionkit.Mode
+import com.hellmannratti.cassete.core.Mode
 import com.hellmannratti.vcr.ui.theme.VcrTheme
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable

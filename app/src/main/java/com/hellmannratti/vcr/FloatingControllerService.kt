@@ -48,7 +48,7 @@ import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
-import com.hellmannratti.vcr.sessionkit.SessionPlayer
+import com.hellmannratti.cassete.core.SessionPlayer
 import com.hellmannratti.vcr.ui.theme.VcrTheme
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch

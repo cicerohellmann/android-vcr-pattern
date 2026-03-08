@@ -3,7 +3,7 @@ package com.hellmannratti.vcr.framework
 /**
  * Legacy wiring preserved for history.
  *
- * SessionKit owns the OkHttp plumbing now; the app should not build clients via this object.
+ * Cassete now installs into an app-owned OkHttpClient; this object remains only as a marker.
  */
-@Deprecated("Use SessionKit (app.sessionKit) for recording/replay plumbing")
+@Deprecated("Use VcrApp.okHttpClient or VcrApp.networkClient for Cassete-enabled networking")
 object HttpClients

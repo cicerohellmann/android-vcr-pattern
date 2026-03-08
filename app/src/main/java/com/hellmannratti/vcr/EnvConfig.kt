@@ -3,8 +3,11 @@ package com.hellmannratti.vcr
 import android.app.Activity
 import android.content.Context
 import android.content.pm.PackageManager
-import com.hellmannratti.vcr.sessionkit.Mode
-import com.hellmannratti.vcr.sessionkit.SessionKitConfig
+import com.hellmannratti.cassete.core.CasseteConfig
+import com.hellmannratti.cassete.core.HeaderRedactor
+import com.hellmannratti.cassete.core.MissingTapePolicy
+import com.hellmannratti.cassete.core.Mode
+import com.hellmannratti.cassete.core.UrlPattern
 import java.io.File
 
 /**
@@ -12,18 +15,24 @@ import java.io.File
  * Defaults to RECORD mode with runtime switching capability.
  */
 object EnvConfig {
-    fun resolve(context: Context): SessionKitConfig {
-        // Default to RECORD mode since we no longer have build flavors
+    fun resolve(context: Context): CasseteConfig {
         val runMode = Mode.RECORD
-        
-        // Default tape file path
         val tapeFile = File(context.filesDir, "sessions/events.ndjson")
-        
-        return SessionKitConfig(
-            mode = runMode,
+
+        return CasseteConfig(
+            initialMode = runMode,
             tapeFile = tapeFile,
             appVersion = "1.0",
-            device = android.os.Build.MODEL ?: "unknown"
+            device = android.os.Build.MODEL ?: "unknown",
+            urlNormalizers = listOf(
+                UrlPattern.fromRetrofitStyle("https://pokeapi.co/api/v2/pokemon/{id}"),
+                UrlPattern.fromRetrofitStyle("https://api.github.com/users/{name}"),
+                UrlPattern.fromRetrofitStyle("https://jsonplaceholder.typicode.com/posts/{id}"),
+                UrlPattern.fromRetrofitStyle("https://jsonplaceholder.typicode.com/users/{id}")
+            ),
+            requestHeaderRedactor = HeaderRedactor.redactAuthTokens(),
+            responseHeaderRedactor = HeaderRedactor.redactAuthTokens(),
+            missingTapePolicy = MissingTapePolicy.PASSTHROUGH
         )
     }
 }

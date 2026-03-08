@@ -1,7 +1,7 @@
 package com.hellmannratti.vcr.framework
 
 import android.util.Log
-import com.hellmannratti.vcr.sessionkit.TapeLogger
+import com.hellmannratti.cassete.core.TapeLogger
 
 class AndroidTapeLogger : TapeLogger {
     override fun d(tag: String, message: String) { Log.d(tag, message) }

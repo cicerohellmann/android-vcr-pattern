@@ -2,23 +2,32 @@ package com.hellmannratti.vcr
 
 import android.app.Application
 import android.content.Context
+import com.hellmannratti.cassete.core.Cassete
+import com.hellmannratti.cassete.core.CasseteRuntime
+import com.hellmannratti.cassete.core.KotlinRandomProvider
+import com.hellmannratti.cassete.core.Mode
+import com.hellmannratti.cassete.core.NetworkClient
+import com.hellmannratti.cassete.core.RandomProvider
+import com.hellmannratti.cassete.core.SystemClock
+import com.hellmannratti.cassete.core.UuidGenerator
+import com.hellmannratti.cassete.okhttp.CasseteOkHttp
+import com.hellmannratti.cassete.okhttp.OkHttpNetworkClient
 import com.hellmannratti.vcr.framework.AndroidTapeLogger
-import com.hellmannratti.vcr.sessionkit.KotlinRandomProvider
-import com.hellmannratti.vcr.sessionkit.Mode
-import com.hellmannratti.vcr.sessionkit.RandomProvider
-import com.hellmannratti.vcr.sessionkit.SessionKit
-import com.hellmannratti.vcr.sessionkit.SystemClock
-import com.hellmannratti.vcr.sessionkit.UuidGenerator
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import okhttp3.OkHttpClient
 
 /**
- * Holds a single SessionRecorder and OkHttpClient for the whole app so
+ * Holds a single Cassete controller and OkHttpClient for the whole app so
  * user actions and network events end up in the same NDJSON session file.
  */
 class VcrApp : Application() {
-    lateinit var sessionKit: SessionKit
+    lateinit var cassete: CasseteRuntime
+        private set
+
+    lateinit var networkClient: NetworkClient
+        private set
+
+    lateinit var okHttpClient: OkHttpClient
         private set
 
     val replayController: ReplayController by lazy { ReplayController() }
@@ -26,50 +35,33 @@ class VcrApp : Application() {
     val clock = SystemClock
     val idGenerator = UuidGenerator
     val randomProvider: RandomProvider = KotlinRandomProvider(kotlin.random.Random.Default)
+    val currentMode: StateFlow<Mode>
+        get() = cassete.mode
 
-
-    // Runtime mode state for switching between RECORD and REPLAY
-    private var _currentMode = MutableStateFlow(Mode.RECORD)
-    val currentMode: StateFlow<Mode> = _currentMode.asStateFlow()
-
-    /**
-     * Switch between RECORD and REPLAY modes at runtime.
-     * Rebuilds the HTTP client with the appropriate interceptor.
-     */
     fun switchMode(newMode: Mode) {
-        _currentMode.value = newMode
-        sessionKit.switchMode(newMode)
+        cassete.switchMode(newMode)
     }
 
-    /**
-     * Update the HTTP client with a new replayer interceptor.
-     * Used when loading a tape file at runtime in REPLAY mode.
-     */
     fun loadTapeFile(file: java.io.File): Int {
-        return sessionKit.loadTape(file)
+        return cassete.loadTape(file).uniqueRequestCount
     }
 
-    /**
-     * Clear the buffer by recreating the SessionRecorder instance.
-     * This clears any pending writes in the executor queue without deleting the file.
-     * Also rebuilds the HTTP client to restore recording capability.
-     */
     fun clearBuffer() {
-        sessionKit.clearBuffer()
+        cassete.clearBuffer()
     }
 
     override fun onCreate() {
         super.onCreate()
         val config = EnvConfig.resolve(this)
-        _currentMode.value = config.mode
-        sessionKit = SessionKit(
+        cassete = Cassete.create(
             config = config,
             baseDir = filesDir,
             clock = clock,
             idGenerator = idGenerator,
-            randomProvider = randomProvider,
             logger = AndroidTapeLogger()
         )
+        okHttpClient = CasseteOkHttp.install(OkHttpClient.Builder(), cassete).build()
+        networkClient = OkHttpNetworkClient { okHttpClient }
     }
 
     companion object {

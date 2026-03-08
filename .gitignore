@@ -5,3 +5,6 @@ local.properties
 build/reports/problems/problems-report.html
 .DS_Store
 /sessionkit/build
+/cassete-core/build
+/cassete-okhttp/build
+/cassete-ktor/build

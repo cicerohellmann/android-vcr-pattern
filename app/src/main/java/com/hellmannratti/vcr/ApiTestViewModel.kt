@@ -10,11 +10,11 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.hellmannratti.vcr.sessionkit.Clock
-import com.hellmannratti.vcr.sessionkit.Mode
-import com.hellmannratti.vcr.sessionkit.NetworkClient
-import com.hellmannratti.vcr.sessionkit.RandomProvider
-import com.hellmannratti.vcr.sessionkit.SessionPlayer
+import com.hellmannratti.cassete.core.Clock
+import com.hellmannratti.cassete.core.Mode
+import com.hellmannratti.cassete.core.NetworkClient
+import com.hellmannratti.cassete.core.RandomProvider
+import com.hellmannratti.cassete.core.SessionPlayer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -211,8 +211,8 @@ class ApiTestViewModel(
         viewModelScope.launch {
             runCatching {
                 val filesToShare = buildList {
-                    add(app.sessionKit.file)
-                    app.sessionKit.lastTapeLoadErrorFile?.takeIf { it.exists() }?.let { add(it) }
+                    add(app.cassete.recordingFile)
+                    app.cassete.lastTapeLoadErrorFile?.takeIf { it.exists() }?.let { add(it) }
                 }
 
                 val authority = "${app.packageName}.fileprovider"
@@ -253,7 +253,7 @@ class ApiTestViewModel(
         viewModelScope.launch {
             val fileName = "vcr_session_${clock.nowMs()}.ndjson"
             runCatching {
-                val sourceFile = app.sessionKit.file
+                val sourceFile = app.cassete.recordingFile
 
                 withContext(Dispatchers.IO) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -331,7 +331,7 @@ class ApiTestViewModel(
         if (uri == null) return
         viewModelScope.launch {
             runCatching {
-                val destFile = File(app.sessionKit.file.parentFile, "selected_tape.ndjson")
+                val destFile = File(app.cassete.recordingFile.parentFile, "selected_tape.ndjson")
 
                 withContext(Dispatchers.IO) {
                     app.contentResolver.openInputStream(uri)?.use { input ->
@@ -360,7 +360,7 @@ class ApiTestViewModel(
 
     private fun resetForReplay() {
         fetchJob?.cancel()
-        app.sessionKit.resetReplayCursors()
+        app.cassete.resetReplayCursors()
         _state.update {
             it.copy(
                 content = ScreenContent.Idle,
@@ -467,9 +467,9 @@ class ApiTestViewModel(
             return object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                    val clock = app.sessionKit.clock()
-                    val random = app.sessionKit.random()
-                    val network = app.sessionKit.networkClient()
+                    val clock = app.clock
+                    val random = app.randomProvider
+                    val network = app.networkClient
                     return ApiTestViewModel(app, clock, random, network) as T
                 }
             }
@@ -511,13 +511,13 @@ class ApiTestViewModel(
             else -> emptyMap()
         }
 
-        app.sessionKit.recordUiEvent(screen = "ApiTest", event = eventName, payload = payload)
+        app.cassete.recordUiEvent(screen = "ApiTest", event = eventName, payload = payload)
     }
 
     private fun nextIntRecorded(from: Int, until: Int): Int {
         val value = random.nextInt(from, until)
         if (state.value.mode == Mode.RECORD) {
-            app.sessionKit.recordAction(
+            app.cassete.recordAction(
                 name = "ND_RANDOM_INT",
                 details = buildJsonObject {
                     put("from", from)

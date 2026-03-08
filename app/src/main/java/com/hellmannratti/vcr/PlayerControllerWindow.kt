@@ -32,7 +32,7 @@ fun PlayerControllerWindow(
     state: ApiUiState,
     onEvent: (UiEvent) -> Unit
 ) {
-    if (state.mode != com.hellmannratti.vcr.sessionkit.Mode.REPLAY) return
+    if (state.mode != com.hellmannratti.cassete.core.Mode.REPLAY) return
     if (!state.player.loaded) return
 
     var sliderValue by remember { mutableFloatStateOf(state.player.position.toFloat()) }

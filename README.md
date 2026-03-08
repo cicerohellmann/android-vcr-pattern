@@ -1,204 +1,202 @@
-### SessionKit (cassete)
+# Cassete
 
-This repository contains:
+Cassete records and replays HTTP traffic and UI events so Android bugs can be reproduced without depending on live backend state.
 
-1. **`sessionkit/`** — a small, reusable library (“the whole enchilada”) that records and replays sessions.
-2. **`app/`** — a demo Android app that wires SessionKit into a UI, adds a player overlay, and supports export/import of tapes.
+The repository now ships adapter-based modules instead of a monolithic client-owning library:
 
-The goal is to make **hard-to-reproduce, stateful bugs** reproducible by capturing what the app *observed* (HTTP + UI events) into a **tape**, then replaying it deterministically later.
+- `:cassete-core` for tape storage, matching, replay state, diagnostics, and the shared controller
+- `:cassete-okhttp` for OkHttp and Retrofit integration
+- `:cassete-ktor` for Ktor client integration
+- `:app` as the demo Android host app
+- `:sessionkit` as the legacy module kept in the repo during migration
 
----
+## What it does
 
-### The VCR pattern (idea)
+- `RECORD`: real network, append request/response and UI events to an NDJSON tape
+- `REPLAY`: serve matching responses from tape with deterministic cursor progression
+- `PASSTHROUGH`: real network, no recording or replay
 
-Think “old-school video recorder,” but for side effects:
+The tape format stays schema-compatible with the existing NDJSON v1 shape. Older tapes without the full envelope are still accepted by the loader.
 
-- **RECORD**: run against the real backend; every HTTP request/response (and optionally UI events) is appended to a tape file.
-- **REPLAY**: run without the backend; responses are served from the tape instead of the network.
-- **PASSTHROUGH**: real network, no recording/replay.
+## Modules
 
-Why it helps:
+### `:cassete-core`
 
-- **Deterministic debugging**: same inputs → same outputs.
-- **Stable reproduction of transient states**: you don’t need the backend to be in “the same state again”; you replay the exact payloads the app saw when the bug happened.
-- **Offline / fast**: no network latency, works in airplane mode.
+Core contains:
 
----
+- `Cassete.create(...)` and the shared `CasseteRuntime` controller
+- `Mode`, `TapeLoadResult`, replay-miss and missing-tape policies
+- `Event`, `TapeLoader`, `ReplayTape`, `SessionRecorder`, `SessionPlayer`
+- transport-neutral request and response snapshots
+- URL normalization, header redaction, and body redaction hooks
+- deterministic replay cursor handling and tape-load diagnostics
 
-### Project structure
+### `:cassete-okhttp`
 
-#### `sessionkit/` (library)
-SessionKit is the minimal app-facing API. The app should not have to know about tape parsing, pairing requests/responses, cursor handling, etc.
+OkHttp integration is installation-based:
 
-Key concepts:
+```kotlin
+val controller = Cassete.create(
+    config = CasseteConfig(
+        initialMode = Mode.RECORD,
+        tapeFile = File(filesDir, "sessions/events.ndjson")
+    ),
+    baseDir = filesDir
+)
 
-- `SessionKit` — one entry point that gives you:
-  - a `NetworkClient` backed by OkHttp that records/replays
-  - `recordUiEvent(...)` and `recordAction(...)` helpers
-  - `switchMode(...)`, `loadTape(...)`, and `resetReplayCursors()`
-- `Mode` — `RECORD`, `REPLAY`, `PASSTHROUGH`
-- `SessionRecorder` — writes NDJSON events with a monotonic `seq`
-- `TapeLoader` + `ReplayTape` — load/build the in-memory replay tape with validation
-- `RecordingInterceptor` / `ReplayerInterceptor` — OkHttp interceptors that implement record/replay
-- `UrlPattern` — Retrofit-style URL matching (`/pokemon/{id}`)
+val okHttp = CasseteOkHttp
+    .install(OkHttpClient.Builder(), controller)
+    .build()
+```
 
-#### `app/` (demo)
-The demo app:
+The same client can then be reused by Retrofit.
 
-- exposes mode switching in UI
-- can share/download `events.ndjson`
-- can import an external tape and immediately replay it
-- includes a **SessionPlayer** + overlay controls (play/pause/step/back/seek)
-- gates live user inputs while the player is active (“Player active: live inputs are gated”)
+### Retrofit
 
----
+Retrofit rides on the OkHttp adapter:
 
-### Tape format (NDJSON)
+```kotlin
+val retrofit = Retrofit.Builder()
+    .baseUrl(baseUrl)
+    .client(okHttp)
+    .addConverterFactory(ScalarsConverterFactory.create())
+    .build()
+```
 
-The tape is **newline-delimited JSON** (NDJSON): one JSON object per line. It’s append-only and easy to inspect.
+Integration coverage in this repo verifies:
 
-Important fields:
+- success-body decoding still works in replay mode
+- error responses still expose their recorded status, headers, and body
+- the same OkHttp client can switch between `RECORD` and `REPLAY`
 
-- `schema: Int` — currently `1`
-- `seq: Long` — **strictly increasing ordering key** (this is the determinism anchor)
-- `ts: Long?` — optional wall clock timestamp (not used for ordering)
-- `type: String` — event discriminator
+### `:cassete-ktor`
 
-Event types used by SessionKit:
+Ktor installs as a client plugin:
 
-- `SESSION_START`
-- `UI_EVENT` — “inputs” to your ViewModel / reducer
-- `ACTION` — generic actions; can represent nondeterminism outputs (time/uuid/random)
-- `REQUEST` / `RESPONSE` — HTTP traffic
+```kotlin
+val client = HttpClient(CIO) {
+    install(CasseteKtor) {
+        controller = casseteController
+    }
+}
+```
 
-Example (shortened):
+The plugin uses the same controller and tape engine as OkHttp.
+
+## Demo app
+
+The demo app now acts as a host app instead of relying on transport ownership inside `sessionkit`.
+
+`app/src/main/java/com/hellmannratti/vcr/VcrApp.kt` creates:
+
+- one shared `CasseteRuntime`
+- one app-owned `OkHttpClient` with `CasseteOkHttp` installed
+- one `OkHttpNetworkClient` for the ViewModel layer
+
+The demo still supports:
+
+- runtime mode switching
+- tape import and export
+- replay controls backed by `SessionPlayer`
+- deterministic replay cursor reset when rewinding UI state
+
+## Tape format
+
+Tapes are newline-delimited JSON:
 
 ```json
 {"schema":1,"seq":0,"type":"SESSION_START","ts":1700000000000,"metadata":{},"appVersion":"1.0","device":"emulator"}
 {"schema":1,"seq":1,"type":"UI_EVENT","ts":1700000000100,"metadata":{},"screen":"ApiTest","event":"FetchRandomPokemon","payload":{}}
-{"schema":1,"seq":2,"type":"REQUEST","ts":1700000000300,"metadata":{},"requestId":"r1","method":"GET","url":"https://pokeapi.co/api/v2/pokemon/25","bodySha256":null}
-{"schema":1,"seq":3,"type":"RESPONSE","ts":1700000000400,"metadata":{},"requestId":"r1","code":200,"headers":{"Content-Type":"application/json"},"body":"{...}","durationMs":123}
+{"schema":1,"seq":2,"type":"REQUEST","ts":1700000000200,"metadata":{},"requestId":"r1","method":"GET","url":"https://pokeapi.co/api/v2/pokemon/25","bodySha256":null}
+{"schema":1,"seq":3,"type":"RESPONSE","ts":1700000000300,"metadata":{},"requestId":"r1","code":200,"headers":{"content-type":"application/json"},"body":"{...}","durationMs":123}
 ```
 
----
+Request matching is driven by:
 
-### Quickstart (run the demo)
+- HTTP method
+- normalized URL
+- optional request body hash
 
-Prereqs:
+Repeated identical requests are replayed in FIFO order via per-request cursors.
 
-- Android Studio (recent)
-- Android minSdk 24
-- JDK 11+
+## Privacy hooks
 
-Build:
+Core configuration includes hooks for:
+
+- request-header redaction
+- response-header redaction
+- request-body redaction
+- response-body redaction
+
+Example:
+
+```kotlin
+val config = CasseteConfig(
+    initialMode = Mode.RECORD,
+    requestHeaderRedactor = HeaderRedactor.redactAuthTokens(),
+    responseHeaderRedactor = HeaderRedactor.redactAuthTokens()
+)
+```
+
+## Replay policies
+
+Two behaviors are configurable:
+
+- `replayMissPolicy`
+  - `THROW` fails fast when a replayed request has no matching response
+  - `PASSTHROUGH` falls back to live network
+- `missingTapePolicy`
+  - `FAIL` fails when replay mode cannot load a tape
+  - `PASSTHROUGH` allows live network instead
+
+## Supported versions in this repo
+
+The implementation and tests in this repository are wired against:
+
+- Kotlin `2.2.21`
+- OkHttp `4.12.0`
+- Retrofit `2.11.0`
+- Ktor `3.1.3`
+- Android `minSdk 24`
+
+## Build and verification
+
+Useful commands:
 
 ```bash
+./gradlew :cassete-core:compileKotlin
+./gradlew :cassete-okhttp:test
+./gradlew :cassete-ktor:test
+./gradlew :sessionkit:testDebugUnitTest
 ./gradlew :app:assembleDebug
 ```
 
----
+## Publishing
 
-### Using SessionKit in your own app
+Each published module applies `maven-publish`.
 
-SessionKit is designed to be a seam: your UI/business logic should depend on **ports** (clock/random/id/network) and be able to swap “live” vs “replay” behavior.
+Current coordinates:
 
-#### 1) Create SessionKit
+- `com.hellmannratti.cassete:cassete-core:0.1.0-SNAPSHOT`
+- `com.hellmannratti.cassete:cassete-okhttp:0.1.0-SNAPSHOT`
+- `com.hellmannratti.cassete:cassete-ktor:0.1.0-SNAPSHOT`
 
-Create one instance (e.g., in `Application`):
+Publish to the local Maven cache with:
 
-```kotlin
-import com.hellmannratti.vcr.sessionkit.Mode
-import com.hellmannratti.vcr.sessionkit.SessionKit
-import com.hellmannratti.vcr.sessionkit.SessionKitConfig
-
-val sessionKit = SessionKit(
-    config = SessionKitConfig(
-        mode = Mode.RECORD,
-        tapeFile = null,
-        appVersion = BuildConfig.VERSION_NAME,
-        device = android.os.Build.MODEL
-    ),
-    baseDir = filesDir
-)
+```bash
+./gradlew :cassete-core:publishToMavenLocal \
+  :cassete-okhttp:publishToMavenLocal \
+  :cassete-ktor:publishToMavenLocal
 ```
 
-#### 2) Get a network client
+## Current validation coverage
 
-```kotlin
-val network = sessionKit.networkClient()
-// use `network` from your ViewModel / repository (not OkHttp directly)
-```
+This repo now has automated coverage for:
 
-#### 3) Switch modes
-
-```kotlin
-sessionKit.switchMode(Mode.REPLAY) // or Mode.RECORD / Mode.PASSTHROUGH
-```
-
-#### 4) Load an imported tape (REPLAY)
-
-```kotlin
-// Pick a file (DocumentProvider / file picker) and pass it in
-val uniqueRequests = sessionKit.loadTape(importedNdjsonFile)
-```
-
-If the tape fails to load, SessionKit writes diagnostics to:
-
-- `files/sessions/last_tape_load_error.txt`
-
-This file is safe to share with support (but still review it if you recorded sensitive data).
-
-#### 5) Record UI events (optional but recommended)
-
-```kotlin
-sessionKit.recordUiEvent(
-    screen = "Checkout",
-    event = "SubmitOrder",
-    payload = emptyMap()
-)
-```
-
-UI events are what enable “time travel” style replay (step/seek/back) when combined with a player.
-
-#### 6) Rewind support: reset replay cursors
-
-HTTP replay is consumed via per-request cursors. If you implement rewind/seek-back, reset cursors when you reset UI state:
-
-```kotlin
-sessionKit.resetReplayCursors()
-```
-
----
-
-### QA → Dev workflow (why this exists)
-
-1. QA reproduces a bug on a real device in **RECORD** mode.
-2. QA exports/shares the tape (`events.ndjson`).
-3. Dev imports the tape and switches to **REPLAY**.
-4. Dev can now reproduce the bug deterministically (even if the backend/account state has changed).
-
-This is particularly valuable for **transient states** (e.g., a vehicle “on the road” during the bug report, but “parked” later). You don’t try to recreate the backend state; you replay what the app saw.
-
----
-
-### Matching and determinism notes
-
-- Requests are matched using:
-  - method + URL (with optional `UrlPattern` placeholders)
-  - optional request body hash (`bodySha256`) for distinguishing same-URL POSTs
-- Ordering is driven by `seq` to avoid relying on wall-clock time.
-
----
-
-### Drawbacks / things to watch
-
-- **Privacy & security**: tapes can contain PII, auth tokens, or proprietary payloads. Add redaction/filters before sharing beyond your team.
-- **Stale recordings**: a tape is a snapshot; if backend behavior changes, tapes can become misleading.
-- **Coverage is only what you recorded**: you still need new recordings for new scenarios.
-- **Matching can be hard**: dynamic headers/nonces/timestamps may require normalization rules.
-
----
-
-### License
-
-No license is currently specified. Contact the project owner for licensing information.
+- tape parsing and legacy NDJSON compatibility
+- replay cursor and matching behavior
+- malformed-tape diagnostics
+- OkHttp record and replay behavior
+- Retrofit record and replay compatibility
+- Ktor plugin record and replay behavior with a real CIO engine
+- demo app assembly
