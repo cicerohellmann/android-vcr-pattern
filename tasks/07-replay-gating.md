@@ -10,10 +10,9 @@ Ensure replay mode disables real external inputs and substitutes recorded values
 
 ## Notes (progress)
 - Manual screen inputs are gated while the replay player is loaded; only player-driven events are accepted.
-- `ND_RANDOM_INT` values are now consumed from the loaded tape during player-driven replay, so replay no longer falls back to live randomness for `FetchRandomPokemon`.
-- Replay nondeterminism is now loaded through a shared ordered stream that also understands recorded `ND_TIME` and `ND_UUID` events for future replay call sites.
+- `ND_RANDOM_INT`, `ND_TIME`, and `ND_UUID` values are now consumed from the loaded tape during player-driven replay, so replayed fetch flows do not fall back to live randomness, wall clock time, or UUID generation.
+- Replay nondeterminism is loaded through a shared ordered stream that preserves the original cross-type action ordering from the tape.
 - Network replay remains mediated by `CasseteOkHttp`, which serves recorded responses before the backend interceptor is reached.
-- Recorded time/UUID substitution is still not wired into player-driven replay.
 
 ## Acceptance Criteria
 - When replay is active, no real network/time/random calls execute; only recorded data is used.

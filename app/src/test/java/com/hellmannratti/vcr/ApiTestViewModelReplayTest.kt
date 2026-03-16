@@ -3,7 +3,9 @@ package com.hellmannratti.vcr
 import com.hellmannratti.cassete.core.Cassete
 import com.hellmannratti.cassete.core.CasseteConfig
 import com.hellmannratti.cassete.core.CasseteRuntime
+import com.hellmannratti.cassete.core.Clock
 import com.hellmannratti.cassete.core.FixedClock
+import com.hellmannratti.cassete.core.IdGenerator
 import com.hellmannratti.cassete.core.Mode
 import com.hellmannratti.cassete.core.NetworkClient
 import com.hellmannratti.cassete.core.NetworkResponse
@@ -54,6 +56,8 @@ class ApiTestViewModelReplayTest {
             val recorded = recordPokemonSession(tapeDir) { advanceUntilIdle() }
 
             val replayBackend = PokemonBackendInterceptor()
+            val replayClock = CountingClock(nowMsValue = 2_000L)
+            val replayIds = CountingIdGenerator(ids = ArrayDeque(listOf("live-id-should-not-be-used")))
             val replayRandom = CountingRandomProvider(values = ArrayDeque(listOf(999)))
             val replayApp = createApp(
                 cassete = createCassete(
@@ -64,7 +68,8 @@ class ApiTestViewModelReplayTest {
             )
             val replayViewModel = ApiTestViewModel(
                 app = replayApp,
-                clock = FixedClock(2_000L),
+                clock = replayClock,
+                idGenerator = replayIds,
                 random = replayRandom,
                 network = OkHttpTestNetworkClient(
                     client = OkHttpClient.Builder()
@@ -83,7 +88,11 @@ class ApiTestViewModelReplayTest {
 
             val replayed = replayViewModel.state.value.content as ScreenContent.PokemonLoaded
             assertEquals(recorded.pokemon, replayed.pokemon)
+            assertEquals(recorded.requestId, replayViewModel.state.value.lastCompletedRequestId)
+            assertEquals(recorded.completedAtMs, replayViewModel.state.value.lastUpdatedAtMs)
             assertEquals(0, replayBackend.calls.get())
+            assertEquals(0, replayClock.nowMsCalls)
+            assertEquals(0, replayIds.calls)
             assertEquals(0, replayRandom.calls)
             assertEquals(1, replayViewModel.state.value.player.position)
         } finally {
@@ -101,6 +110,7 @@ class ApiTestViewModelReplayTest {
             val recorded = recordPokemonSession(tapeDir) { advanceUntilIdle() }
 
             val replayBackend = PokemonBackendInterceptor()
+            val replayIds = CountingIdGenerator(ids = ArrayDeque(listOf("live-id-should-not-be-used")))
             val replayRandom = CountingRandomProvider(values = ArrayDeque(listOf(321)))
             val replayApp = createApp(
                 cassete = createCassete(
@@ -111,7 +121,8 @@ class ApiTestViewModelReplayTest {
             )
             val replayViewModel = ApiTestViewModel(
                 app = replayApp,
-                clock = FixedClock(3_000L),
+                clock = CountingClock(nowMsValue = 3_000L),
+                idGenerator = replayIds,
                 random = replayRandom,
                 network = OkHttpTestNetworkClient(
                     client = OkHttpClient.Builder()
@@ -154,6 +165,7 @@ class ApiTestViewModelReplayTest {
             val recorded = recordPokemonSession(tapeDir) { advanceUntilIdle() }
 
             val replayBackend = PokemonBackendInterceptor()
+            val replayIds = CountingIdGenerator(ids = ArrayDeque(listOf("live-id-should-not-be-used")))
             val replayRandom = CountingRandomProvider(values = ArrayDeque(listOf(777)))
             val replayApp = createApp(
                 cassete = createCassete(
@@ -164,7 +176,8 @@ class ApiTestViewModelReplayTest {
             )
             val replayViewModel = ApiTestViewModel(
                 app = replayApp,
-                clock = FixedClock(4_000L),
+                clock = CountingClock(nowMsValue = 4_000L),
+                idGenerator = replayIds,
                 random = replayRandom,
                 network = OkHttpTestNetworkClient(
                     client = OkHttpClient.Builder()
@@ -185,6 +198,8 @@ class ApiTestViewModelReplayTest {
             replayViewModel.onEvent(UiEvent.PlayerStepBack)
             advanceUntilIdle()
             assertTrue(replayViewModel.state.value.content is ScreenContent.Idle)
+            assertEquals(null, replayViewModel.state.value.lastCompletedRequestId)
+            assertEquals(null, replayViewModel.state.value.lastUpdatedAtMs)
             assertEquals(0, replayViewModel.state.value.player.position)
 
             replayViewModel.onEvent(UiEvent.PlayerStepFwd)
@@ -193,7 +208,10 @@ class ApiTestViewModelReplayTest {
 
             assertEquals(recorded.pokemon, firstReplay.pokemon)
             assertEquals(recorded.pokemon, secondReplay.pokemon)
+            assertEquals(recorded.requestId, replayViewModel.state.value.lastCompletedRequestId)
+            assertEquals(recorded.completedAtMs, replayViewModel.state.value.lastUpdatedAtMs)
             assertEquals(0, replayBackend.calls.get())
+            assertEquals(0, replayIds.calls)
             assertEquals(0, replayRandom.calls)
             assertEquals(1, replayViewModel.state.value.player.position)
         } finally {
@@ -204,11 +222,14 @@ class ApiTestViewModelReplayTest {
 
     private fun recordPokemonSession(baseDir: File, advance: () -> Unit): RecordedSession {
         val backend = PokemonBackendInterceptor()
+        val clock = FixedClock(1_000L)
+        val ids = SequenceIdGenerator(ArrayDeque(listOf("vm-req-1")))
         val random = CountingRandomProvider(values = ArrayDeque(listOf(25)))
         val app = createApp(cassete = createCassete(baseDir = baseDir, initialMode = Mode.RECORD))
         val viewModel = ApiTestViewModel(
             app = app,
-            clock = FixedClock(1_000L),
+            clock = clock,
+            idGenerator = ids,
             random = random,
             network = OkHttpTestNetworkClient(
                 client = OkHttpClient.Builder()
@@ -227,7 +248,9 @@ class ApiTestViewModelReplayTest {
 
         return RecordedSession(
             tapeFile = app.cassete.recordingFile,
-            pokemon = loaded.pokemon
+            pokemon = loaded.pokemon,
+            requestId = requireNotNull(viewModel.state.value.lastCompletedRequestId),
+            completedAtMs = requireNotNull(viewModel.state.value.lastUpdatedAtMs)
         )
     }
 
@@ -260,7 +283,9 @@ class ApiTestViewModelReplayTest {
 
     private data class RecordedSession(
         val tapeFile: File,
-        val pokemon: PokemonDetail
+        val pokemon: PokemonDetail,
+        val requestId: String,
+        val completedAtMs: Long
     )
 
     private class OkHttpTestNetworkClient(
@@ -320,6 +345,33 @@ class ApiTestViewModelReplayTest {
             val value = values.removeFirstOrNull() ?: error("No random value left for test")
             require(value in from until until) { "Value $value not in range [$from, $until)" }
             return value
+        }
+    }
+
+    private class CountingClock(
+        private val nowMsValue: Long,
+        private val nowNsValue: Long = nowMsValue * 1_000_000
+    ) : Clock {
+        var nowMsCalls: Int = 0
+            private set
+
+        override fun nowMs(): Long {
+            nowMsCalls += 1
+            return nowMsValue
+        }
+
+        override fun nowNs(): Long = nowNsValue
+    }
+
+    private class CountingIdGenerator(
+        private val ids: ArrayDeque<String>
+    ) : IdGenerator {
+        var calls: Int = 0
+            private set
+
+        override fun uuid(): String {
+            calls += 1
+            return ids.removeFirstOrNull() ?: error("No UUID left for test")
         }
     }
 

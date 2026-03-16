@@ -8,7 +8,7 @@ Make time/random/UUID/network inputs injectable so they can be recorded and repl
 - [x] Provide live implementations and replay/test doubles.
 - [x] Inject these dependencies into ViewModel instead of using globals/system calls.
 - [x] Map each nondeterministic output to a recordable payload shape (documented).
-- [~] (Optional / follow-up) Emit nondeterminism events during RECORD and consume them during REPLAY.
+- [x] Emit nondeterminism events during RECORD and consume them during REPLAY for the current screen paths.
 
 ## Notes (implemented)
 
@@ -33,9 +33,10 @@ Make time/random/UUID/network inputs injectable so they can be recorded and repl
   - `ReplayNondeterminism` loads `ACTION` events from the latest tape session
   - preserves cross-type ordering for `ND_RANDOM_INT`, `ND_TIME`, and `ND_UUID`
   - supports reset on rewind so player step-back/seek can reconsume recorded values deterministically
-- Current app consumption is partial:
-  - `ND_RANDOM_INT` is consumed during player-driven replay
-  - `ND_TIME` and `ND_UUID` parsing/replay helpers exist, but the current screen logic does not yet consume recorded time/UUID values in replay paths
+- Current app consumption now covers all recorded screen-level nondeterminism used by the replayed fetch flows:
+  - `ND_RANDOM_INT` is consumed for recorded ID selection
+  - `ND_UUID` is consumed for per-fetch request tokens
+  - `ND_TIME` is consumed for per-fetch completion timestamps and export naming
 
 ## Acceptance Criteria
 - All uses of time/random/UUID/network in the screen logic route through interfaces.

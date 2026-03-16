@@ -11,6 +11,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.hellmannratti.cassete.core.Clock
+import com.hellmannratti.cassete.core.IdGenerator
 import com.hellmannratti.cassete.core.Mode
 import com.hellmannratti.cassete.core.NetworkClient
 import com.hellmannratti.cassete.core.RandomProvider
@@ -37,10 +38,12 @@ import java.io.File
 class ApiTestViewModel(
     private val app: VcrApp,
     private val clock: Clock,
+    private val idGenerator: IdGenerator,
     private val random: RandomProvider,
     private val network: NetworkClient
 ) : ViewModel() {
     private var fetchJob: Job? = null
+    private var activeRequestId: String? = null
     private val replayInputs = ReplayNondeterminism()
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -143,28 +146,33 @@ class ApiTestViewModel(
     }
 
     private fun fetchRandomPokemon() {
+        val requestId = beginRequest()
         _state.update {
             it.copy(
                 content = ScreenContent.Loading,
                 showPokemonModal = false,
-                showGenericModal = false
+                showGenericModal = false,
+                activeRequestId = requestId
             )
         }
-        fetchJob?.cancel()
         fetchJob = viewModelScope.launch {
             runCatching { fetchRandomPokemonInternal() }
                 .onSuccess { pokemon ->
-                    _state.update {
-                        it.copy(
+                    settleRequest(requestId) { state, completedAtMs ->
+                        state.copy(
                             content = ScreenContent.PokemonLoaded(pokemon),
-                            showPokemonModal = true
+                            showPokemonModal = true,
+                            lastCompletedRequestId = requestId,
+                            lastUpdatedAtMs = completedAtMs
                         )
                     }
                 }
                 .onFailure { error ->
-                    _state.update {
-                        it.copy(
-                            content = ScreenContent.Error(error.message ?: "Unknown error")
+                    settleRequest(requestId) { state, completedAtMs ->
+                        state.copy(
+                            content = ScreenContent.Error(error.message ?: "Unknown error"),
+                            lastCompletedRequestId = requestId,
+                            lastUpdatedAtMs = completedAtMs
                         )
                     }
                 }
@@ -172,28 +180,33 @@ class ApiTestViewModel(
     }
 
     private fun fetchFromApi(apiType: ApiType) {
+        val requestId = beginRequest()
         _state.update {
             it.copy(
                 content = ScreenContent.Loading,
                 showPokemonModal = false,
-                showGenericModal = false
+                showGenericModal = false,
+                activeRequestId = requestId
             )
         }
-        fetchJob?.cancel()
         fetchJob = viewModelScope.launch {
             runCatching { fetchFromApiInternal(apiType) }
                 .onSuccess { response ->
-                    _state.update {
-                        it.copy(
+                    settleRequest(requestId) { state, completedAtMs ->
+                        state.copy(
                             content = ScreenContent.GenericLoaded(response, apiType),
-                            showGenericModal = true
+                            showGenericModal = true,
+                            lastCompletedRequestId = requestId,
+                            lastUpdatedAtMs = completedAtMs
                         )
                     }
                 }
                 .onFailure { error ->
-                    _state.update {
-                        it.copy(
-                            content = ScreenContent.Error(error.message ?: "Unknown error")
+                    settleRequest(requestId) { state, completedAtMs ->
+                        state.copy(
+                            content = ScreenContent.Error(error.message ?: "Unknown error"),
+                            lastCompletedRequestId = requestId,
+                            lastUpdatedAtMs = completedAtMs
                         )
                     }
                 }
@@ -261,7 +274,7 @@ class ApiTestViewModel(
 
     private fun downloadSessionLog() {
         viewModelScope.launch {
-            val fileName = "vcr_session_${clock.nowMs()}.ndjson"
+            val fileName = "vcr_session_${nextNowMsRecorded()}.ndjson"
             runCatching {
                 val sourceFile = app.cassete.recordingFile
 
@@ -370,6 +383,7 @@ class ApiTestViewModel(
 
     private fun resetForReplay() {
         fetchJob?.cancel()
+        activeRequestId = null
         app.cassete.resetReplayCursors()
         replayInputs.reset()
         _state.update {
@@ -378,7 +392,10 @@ class ApiTestViewModel(
                 showPokemonModal = false,
                 showGenericModal = false,
                 showClearBufferDialog = false,
-                showDeleteFileDialog = false
+                showDeleteFileDialog = false,
+                activeRequestId = null,
+                lastCompletedRequestId = null,
+                lastUpdatedAtMs = null
             )
         }
     }
@@ -479,10 +496,33 @@ class ApiTestViewModel(
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
                     val clock = app.clock
+                    val idGenerator = app.idGenerator
                     val random = app.randomProvider
                     val network = app.networkClient
-                    return ApiTestViewModel(app, clock, random, network) as T
+                    return ApiTestViewModel(app, clock, idGenerator, random, network) as T
                 }
+            }
+        }
+    }
+
+    private fun beginRequest(): String {
+        activeRequestId = null
+        fetchJob?.cancel()
+        return nextUuidRecorded().also { activeRequestId = it }
+    }
+
+    private inline fun settleRequest(
+        requestId: String,
+        crossinline transform: (ApiUiState, Long) -> ApiUiState
+    ) {
+        if (activeRequestId != requestId) return
+        activeRequestId = null
+        val completedAtMs = nextNowMsRecorded()
+        _state.update { current ->
+            if (current.activeRequestId != requestId) {
+                current
+            } else {
+                transform(current, completedAtMs).copy(activeRequestId = null)
             }
         }
     }
@@ -543,6 +583,40 @@ class ApiTestViewModel(
         }
         return value
     }
+
+    private fun nextNowMsRecorded(): Long {
+        if (state.value.mode == Mode.REPLAY && state.value.player.loaded) {
+            return replayInputs.nextNowMs()
+        }
+
+        val value = clock.nowMs()
+        if (state.value.mode == Mode.RECORD) {
+            app.cassete.recordAction(
+                name = "ND_TIME",
+                details = buildJsonObject {
+                    put("nowMs", value)
+                }
+            )
+        }
+        return value
+    }
+
+    private fun nextUuidRecorded(): String {
+        if (state.value.mode == Mode.REPLAY && state.value.player.loaded) {
+            return replayInputs.nextUuid()
+        }
+
+        val value = idGenerator.uuid()
+        if (state.value.mode == Mode.RECORD) {
+            app.cassete.recordAction(
+                name = "ND_UUID",
+                details = buildJsonObject {
+                    put("value", value)
+                }
+            )
+        }
+        return value
+    }
 }
 
 data class ApiUiState(
@@ -552,6 +626,9 @@ data class ApiUiState(
     val showGenericModal: Boolean = false,
     val showClearBufferDialog: Boolean = false,
     val showDeleteFileDialog: Boolean = false,
+    val activeRequestId: String? = null,
+    val lastCompletedRequestId: String? = null,
+    val lastUpdatedAtMs: Long? = null,
     val player: PlayerUiState = PlayerUiState()
 )
 
