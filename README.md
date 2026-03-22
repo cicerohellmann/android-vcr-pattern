@@ -2,13 +2,28 @@
 
 Cassete records and replays HTTP traffic and UI events so Android bugs can be reproduced without depending on live backend state.
 
+The library modules are the product. The demo app exists only as a proof harness that shows how a host app installs Cassete into its own networking stack and consumes the public APIs.
+
 The repository now ships adapter-based modules instead of a monolithic client-owning library:
 
 - `:cassete-core` for tape storage, matching, replay state, diagnostics, and the shared controller
 - `:cassete-okhttp` for OkHttp and Retrofit integration
 - `:cassete-ktor` for Ktor client integration
-- `:app` as the demo Android host app
+- `:app` as the demo Android host app and proof harness
 - `:sessionkit` as a deprecated legacy compatibility module kept in the repo during migration
+
+## Product Boundary
+
+The primary product path in this repository is:
+
+- `:cassete-core`
+- `:cassete-okhttp`
+- `:cassete-ktor`
+
+The supporting roles are:
+
+- `:app` as a sample consumer that proves install, tape loading, replay, and playback flows through the public APIs
+- `:sessionkit` as a legacy compatibility module that remains in the repo during migration but is not the primary architecture
 
 ## What it does
 
