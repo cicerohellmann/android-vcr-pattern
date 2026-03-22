@@ -168,6 +168,7 @@ Two behaviors are configurable:
 
 The implementation and tests in this repository are wired against:
 
+- Java `17` as the local and CI build baseline
 - Kotlin `2.2.21`
 - OkHttp `4.12.0`
 - Retrofit `2.11.0`
@@ -175,6 +176,9 @@ The implementation and tests in this repository are wired against:
 - Android `minSdk 24`
 
 ## Build and verification
+
+Use Java `17` locally before running the Gradle commands below.
+Android module tasks also require a local Android SDK configured through `ANDROID_HOME`, `ANDROID_SDK_ROOT`, or `local.properties`.
 
 Useful commands:
 
