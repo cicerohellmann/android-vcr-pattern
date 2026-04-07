@@ -454,7 +454,7 @@ class ApiTestViewModel(
 
     private suspend fun fetchRandomPokemonInternal(): PokemonDetail {
         val randomId = nextIntRecorded(1, 1026)
-        val response = network.get("https://pokeapi.co/api/v2/pokemon/$randomId").requireSuccess()
+        val response = network.get(app.apiEndpoints.pokemon(randomId)).requireSuccess()
         return json.decodeFromString<PokemonDetail>(response.body)
     }
 
@@ -472,16 +472,16 @@ class ApiTestViewModel(
         return when (apiType) {
             is ApiType.Pokemon -> {
                 val id = apiType.id ?: nextIntRecorded(1, 1026)
-                fetchData("https://pokeapi.co/api/v2/pokemon/$id")
+                fetchData(app.apiEndpoints.pokemon(id))
             }
 
             is ApiType.GitHub -> {
-                fetchData("https://api.github.com/users/${apiType.username}")
+                fetchData(app.apiEndpoints.githubUser(apiType.username))
             }
 
             is ApiType.JsonPlaceholder -> {
                 val id = apiType.id ?: nextIntRecorded(1, 101)
-                fetchData("https://jsonplaceholder.typicode.com/${apiType.endpoint}/$id")
+                fetchData(app.apiEndpoints.jsonPlaceholder(apiType.endpoint, id))
             }
 
             is ApiType.Custom -> {

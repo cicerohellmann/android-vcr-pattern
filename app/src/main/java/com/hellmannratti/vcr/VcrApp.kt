@@ -24,6 +24,9 @@ class VcrApp : Application() {
     lateinit var cassete: CasseteRuntime
         private set
 
+    lateinit var apiEndpoints: ApiEndpoints
+        private set
+
     lateinit var networkClient: NetworkClient
         private set
 
@@ -52,7 +55,20 @@ class VcrApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        val config = EnvConfig.resolve(this)
+        configureForCurrentEnvironment()
+    }
+
+    /**
+     * Allows instrumented tests to swap deterministic endpoints before launching UI.
+     */
+    fun reinitializeForTesting() {
+        configureForCurrentEnvironment()
+    }
+
+    private fun configureForCurrentEnvironment() {
+        replayController.stopAndUnload()
+        apiEndpoints = EnvConfig.endpoints()
+        val config = EnvConfig.resolve(this, apiEndpoints)
         cassete = Cassete.create(
             config = config,
             baseDir = filesDir,

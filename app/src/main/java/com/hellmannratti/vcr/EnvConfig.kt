@@ -15,7 +15,9 @@ import java.io.File
  * Defaults to RECORD mode with runtime switching capability.
  */
 object EnvConfig {
-    fun resolve(context: Context): CasseteConfig {
+    fun endpoints(): ApiEndpoints = AppTestOverrides.apiEndpoints ?: ApiEndpoints()
+
+    fun resolve(context: Context, apiEndpoints: ApiEndpoints = endpoints()): CasseteConfig {
         val runMode = Mode.RECORD
         val tapeFile = File(context.filesDir, "sessions/events.ndjson")
 
@@ -24,12 +26,7 @@ object EnvConfig {
             tapeFile = tapeFile,
             appVersion = "1.0",
             device = android.os.Build.MODEL ?: "unknown",
-            urlNormalizers = listOf(
-                UrlPattern.fromRetrofitStyle("https://pokeapi.co/api/v2/pokemon/{id}"),
-                UrlPattern.fromRetrofitStyle("https://api.github.com/users/{name}"),
-                UrlPattern.fromRetrofitStyle("https://jsonplaceholder.typicode.com/posts/{id}"),
-                UrlPattern.fromRetrofitStyle("https://jsonplaceholder.typicode.com/users/{id}")
-            ),
+            urlNormalizers = apiEndpoints.urlPatterns(),
             requestHeaderRedactor = HeaderRedactor.redactAuthTokens(),
             responseHeaderRedactor = HeaderRedactor.redactAuthTokens(),
             missingTapePolicy = MissingTapePolicy.PASSTHROUGH

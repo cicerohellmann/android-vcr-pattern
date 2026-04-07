@@ -275,9 +275,13 @@ class ApiTestViewModelReplayTest {
 
     private fun createApp(cassete: CasseteRuntime): VcrApp {
         val app = VcrApp()
-        val field = VcrApp::class.java.getDeclaredField("cassete")
-        field.isAccessible = true
-        field.set(app, cassete)
+        val casseteField = VcrApp::class.java.getDeclaredField("cassete")
+        casseteField.isAccessible = true
+        casseteField.set(app, cassete)
+
+        val endpointsField = VcrApp::class.java.getDeclaredField("apiEndpoints")
+        endpointsField.isAccessible = true
+        endpointsField.set(app, ApiEndpoints())
         return app
     }
 

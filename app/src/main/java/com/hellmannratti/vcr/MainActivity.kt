@@ -163,7 +163,11 @@ private fun ApiTestScreen(
     LaunchedEffect(viewModel.effects) {
         viewModel.effects.collect { effect ->
             when (effect) {
-                is UiEffect.ShowToast -> Toast.makeText(context, effect.message, Toast.LENGTH_LONG).show()
+                is UiEffect.ShowToast -> {
+                    if (!AppTestOverrides.suppressToasts) {
+                        Toast.makeText(context, effect.message, Toast.LENGTH_LONG).show()
+                    }
+                }
                 UiEffect.LaunchTapePicker -> filePickerLauncher.launch("*/*")
             }
         }
