@@ -1,5 +1,27 @@
 # Increment Log
 
+## 2026-04-08
+
+### Completed Acceptance Criteria
+- AC-0.5: Write tests for request/response ordering by `seq` field
+
+### Files Changed
+- `sessionkit/src/test/java/com/hellmannratti/vcr/sessionkit/SeqOrderingCharacterizationTest.kt` (new)
+- `USER_STORIES.md` (updated AC-0.5 checkbox)
+
+### Summary
+Completed AC-0.5 by creating comprehensive characterization tests for request/response ordering by the `seq` field. The test suite captures current behavior of how the seq field orders events in tapes:
+
+**AC-0.5 - Seq Ordering Tests** (18 new test methods in SeqOrderingCharacterizationTest.kt):
+- **Sequential ordering (3 tests)**: Tests verify that responses for the same request are returned in the order they appear in the tape, that multiple request types maintain independent ordering, and that responses are returned in recorded order regardless of request type.
+- **Out-of-order seq handling (2 tests)**: Tests confirm that TapeLoader normalizes non-increasing seq values during loading while preserving file order, and that responses are still returned in file order after normalization.
+- **Missing seq values/gaps (1 test)**: Tests validate that gaps in seq sequence (missing intermediate values) are preserved during normalization.
+- **Seq with body hash matching (2 tests)**: Tests verify that responses for different body hashes maintain independent seq ordering and that null hash bucket receives responses in order.
+- **Seq exhaustion and cursor reset (2 tests)**: Tests confirm that after all responses are consumed by seq, subsequent calls return null, and that cursor reset allows re-replay from the beginning.
+- **Seq validation and constraints (4 tests)**: Tests validate that negative seq values are normalized to 0 during loading, and that after normalization events maintain strict monotonic increase.
+
+The test file uses the same characterization testing patterns as AC-0.1 through AC-0.4, with both direct ReplayTape testing and tape loading tests via TapeLoader. All tests capture the existing seq-based ordering behavior before any refactoring.
+
 ## 2026-04-01
 
 ### Completed Acceptance Criteria

@@ -8,7 +8,7 @@
 - [x] AC-0.2: Write tests for replay cursor behavior (sequential progression through repeated requests)
 - [x] AC-0.3: Write tests for missing tape behavior (what happens when no match found)
 - [x] AC-0.4: Write tests for tape load diagnostics (malformed files, empty tapes)
-- [ ] AC-0.5: Write tests for request/response ordering by `seq` field
+- [x] AC-0.5: Write tests for request/response ordering by `seq` field
 - [ ] AC-0.6: Write tests for current NDJSON schema compatibility (round-trip serialize/deserialize)
 
 ## US-1: Extract Transport-Neutral Core Module
