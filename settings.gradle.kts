@@ -24,5 +24,4 @@ include(":app")
 include(":cassete-core")
 include(":cassete-okhttp")
 include(":cassete-ktor")
-include(":sessionkit")
- 
+

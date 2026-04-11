@@ -1,5 +1,6 @@
 package com.hellmannratti.vcr.sessionkit
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -111,7 +112,7 @@ class TapeLoadDiagnosticsCharacterizationTest {
     }
 
     @Test
-    fun `malformed JSON - invalid type in enum throws during deserialization`() {
+    fun `method field is a free-form string so non-standard methods are accepted`() {
         val dir = createTempDir(prefix = "sessionkit_malformed_")
         try {
             val file = File(dir, "bad_enum.ndjson")
@@ -123,16 +124,15 @@ class TapeLoadDiagnosticsCharacterizationTest {
                     appendLine(
                         "{\"schema\":1,\"seq\":1,\"type\":\"REQUEST\",\"ts\":1700000000100,\"metadata\":{},\"requestId\":\"r1\",\"method\":\"INVALID_METHOD\",\"url\":\"https://example.com/items\",\"bodySha256\":null}"
                     )
+                    appendLine(
+                        "{\"schema\":1,\"seq\":2,\"type\":\"RESPONSE\",\"ts\":1700000000200,\"metadata\":{},\"requestId\":\"r1\",\"code\":200,\"headers\":{},\"body\":\"ok\",\"durationMs\":1}"
+                    )
                 }
             )
 
-            val error = runCatching {
-                TapeLoader.loadLatestSession(file)
-            }.exceptionOrNull()
-
-            requireNotNull(error)
-            assertTrue(error is IllegalArgumentException)
-            assertTrue(error.message.orEmpty().contains("Malformed event"))
+            // method is a String, not an enum — any value is accepted
+            val tape = TapeLoader.loadLatestSession(file)
+            assertEquals(1, tape.uniqueRequestCount)
         } finally {
             dir.deleteRecursively()
         }
@@ -192,7 +192,7 @@ class TapeLoadDiagnosticsCharacterizationTest {
     }
 
     @Test
-    fun `malformed JSON - negative seq value throws with validation error`() {
+    fun `malformed JSON - single event with negative seq is normalized then throws NoTapeFoundException`() {
         val dir = createTempDir(prefix = "sessionkit_malformed_")
         try {
             val file = File(dir, "bad_seq.ndjson")
@@ -204,13 +204,15 @@ class TapeLoadDiagnosticsCharacterizationTest {
                 }
             )
 
+            // Negative seq on a single event is normalized to 0 (no prior event to conflict with).
+            // The file then fails because it has no recorded responses.
             val error = runCatching {
                 TapeLoader.loadLatestSession(file)
             }.exceptionOrNull()
 
             requireNotNull(error)
-            assertTrue(error is IllegalArgumentException)
-            assertTrue(error.message.orEmpty().contains("Invalid seq"))
+            assertTrue(error is NoTapeFoundException)
+            assertTrue(error.message.orEmpty().contains("contains no recorded responses"))
         } finally {
             dir.deleteRecursively()
         }
@@ -365,7 +367,7 @@ class TapeLoadDiagnosticsCharacterizationTest {
     }
 
     @Test
-    fun `empty tape file - UI events but no request/response pairs throws NoTapeFoundException`() {
+    fun `empty tape file - UI events but no request-response pairs throws NoTapeFoundException`() {
         val dir = createTempDir(prefix = "sessionkit_empty_")
         try {
             val file = File(dir, "ui_only.ndjson")
@@ -396,7 +398,7 @@ class TapeLoadDiagnosticsCharacterizationTest {
     }
 
     @Test
-    fun `empty tape file - actions but no request/response pairs throws NoTapeFoundException`() {
+    fun `empty tape file - actions but no request-response pairs throws NoTapeFoundException`() {
         val dir = createTempDir(prefix = "sessionkit_empty_")
         try {
             val file = File(dir, "actions_only.ndjson")
@@ -424,7 +426,7 @@ class TapeLoadDiagnosticsCharacterizationTest {
     }
 
     @Test
-    fun `empty tape file - multiple sessions, last one empty throws NoTapeFoundException`() {
+    fun `empty tape file - multiple sessions, last one empty falls back to session containing last response`() {
         val dir = createTempDir(prefix = "sessionkit_empty_")
         try {
             val file = File(dir, "last_empty.ndjson")
@@ -450,13 +452,12 @@ class TapeLoadDiagnosticsCharacterizationTest {
                 }
             )
 
-            val error = runCatching {
-                TapeLoader.loadLatestSession(file)
-            }.exceptionOrNull()
-
-            requireNotNull(error)
-            assertTrue(error is NoTapeFoundException)
-            assertTrue(error.message.orEmpty().contains("contains no recorded responses"))
+            // latestSessionSlice finds the last ResponseEvent (in session 1, seq=2),
+            // then looks backward for the nearest SESSION_START (session 1, seq=0).
+            // The slice includes everything from session 1's start onward, including session 2 events.
+            // Session 1's response is included, so the tape loads successfully.
+            val tape = TapeLoader.loadLatestSession(file)
+            assertEquals(1, tape.uniqueRequestCount)
         } finally {
             dir.deleteRecursively()
         }

@@ -6,6 +6,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
@@ -407,7 +408,7 @@ class SeqOrderingCharacterizationTest {
     // ============================================================================
 
     @Test
-    fun `seq validation - negative seq values are normalized to 0 during loading`() {
+    fun `seq validation - negative seq values after seq 0 cause non-monotonic error during loading`() {
         val dir = createTempDir(prefix = "sessionkit_neg_seq_")
         try {
             val file = File(dir, "events.ndjson")
@@ -417,7 +418,8 @@ class SeqOrderingCharacterizationTest {
                     appendLine(
                         "{\"schema\":1,\"seq\":0,\"type\":\"SESSION_START\",\"ts\":1700000000000,\"metadata\":{},\"appVersion\":\"1.0\",\"device\":\"test\"}"
                     )
-                    // Negative seq should be handled
+                    // Negative seq after seq 0 causes normalization to produce duplicate 0,
+                    // which fails the post-normalization monotonic check
                     appendLine(
                         "{\"schema\":1,\"seq\":-5,\"type\":\"REQUEST\",\"ts\":1700000000100,\"metadata\":{},\"requestId\":\"r1\",\"method\":\"GET\",\"url\":\"https://api.test/x\",\"bodySha256\":null}"
                     )
@@ -427,13 +429,13 @@ class SeqOrderingCharacterizationTest {
                 }
             )
 
-            // Should handle negative seq (likely normalize them)
-            val tape = TapeLoader.loadLatestSession(file)
-            assertEquals(1, tape.uniqueRequestCount)
+            val error = runCatching {
+                TapeLoader.loadLatestSession(file)
+            }.exceptionOrNull()
 
-            val request = req("https://api.test/x", method = "GET")
-            val resp = tape.find(request, bodySha256 = null)
-            assertEquals("neg_seq_resp", resp?.body)
+            assertNotNull(error)
+            assertTrue(error is IllegalArgumentException)
+            assertTrue(error!!.message.orEmpty().contains("Non-monotonic seq"))
         } finally {
             dir.deleteRecursively()
         }

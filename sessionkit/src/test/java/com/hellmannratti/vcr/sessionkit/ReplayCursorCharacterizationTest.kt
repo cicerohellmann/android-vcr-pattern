@@ -406,7 +406,7 @@ class ReplayCursorCharacterizationTest {
     }
 
     @Test
-    fun `cursor reset - allows multiple reset/replay cycles`() {
+    fun `cursor reset - allows multiple reset and replay cycles`() {
         val tape = ReplayTape(
             map = mapOf(
                 RequestKey("GET", "https://api.test/items", null) to listOf(

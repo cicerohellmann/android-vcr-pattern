@@ -1,5 +1,87 @@
 # Increment Log
 
+## 2026-04-10 (continued)
+
+### Completed Acceptance Criteria
+- AC-3.4: Write sample usage code showing Retrofit + Cassete setup
+
+### Files Changed
+- `RETROFIT_SAMPLE.md` (new — comprehensive Retrofit + Cassete setup guide)
+- `USER_STORIES.md` (marked AC-3.4 complete)
+
+### Summary
+Completed AC-3.4 by creating RETROFIT_SAMPLE.md, a comprehensive guide demonstrating Retrofit + Cassete integration. The guide covers:
+
+- **Basic Setup (5 sections)**: Creating a CasseteController, building OkHttpClient with Cassete interceptor, creating Retrofit instance, defining service interfaces, and making requests
+- **Record/Replay Modes**: Detailed explanation of RECORD mode (capture to disk) and REPLAY mode (playback from tape)
+- **Dynamic Mode Switching**: Runtime mode switching using controller.switchMode()
+- **Tape Management**: Loading specific tape files and resetting replay cursors
+- **Complete Example**: Full working example with GitHubApi service showing setup and usage
+- **Converter Compatibility**: Notes on Gson, Moshi, kotlinx.serialization, and Scalars converters
+- **Advanced Configuration**: URL normalization for dynamic segments, header redaction for auth tokens, body redaction for sensitive data
+- **Testing Example**: Unit test pattern using temporary tape directories
+- **Key Points & Troubleshooting**: Best practices and common issues with solutions
+
+The sample demonstrates that Cassete integrates transparently with Retrofit through the OkHttp adapter, enabling code-free record/replay for existing Retrofit service interfaces.
+
+## 2026-04-10
+
+### Completed Acceptance Criteria
+- AC-0.6: Write tests for current NDJSON schema compatibility (round-trip serialize/deserialize)
+- US-1 (all 10 ACs): Verified `:cassete-core` module is complete — zero OkHttp/Android imports, all types extracted
+- US-2 (all 8 ACs): Verified `:cassete-okhttp` module is complete — interceptor API, MockWebServer tests, replay miss handling
+- US-3 (AC-3.1–3.3): Verified Retrofit integration tests exist and pass
+- US-4 (all 7 ACs): Verified `:cassete-ktor` module is complete — plugin API, CIO engine tests, body handling
+- US-5 (AC-5.1–5.5): Verified `:app` already migrated to cassete modules, zero sessionkit references
+- AC-5.6: Removed `:sessionkit` from `settings.gradle.kts` — module excluded from build
+- AC-7.6: Write tests verifying redaction is applied during recording
+
+### Files Changed
+- `cassete-core/src/test/java/com/hellmannratti/cassete/core/RedactionTest.kt` (new — 9 tests)
+- `settings.gradle.kts` (removed `:sessionkit` include)
+- `USER_STORIES.md` (marked US-1 through US-5 and AC-7.1–7.4, AC-7.6 complete)
+
+### Summary
+Audited all modules against their acceptance criteria and confirmed US-1 through US-4 were already fully implemented from prior work. Removed `:sessionkit` from the build (AC-5.6) since no module depends on it. Wrote 9 redaction tests (AC-7.6) covering:
+
+- **Request header redaction (2 tests)**: Authorization token replacement via `HeaderRedactor.redactAuthTokens()`, and header removal when redactor returns null (e.g., stripping Cookie headers).
+- **Response header redaction (2 tests)**: Set-Cookie redaction during recording, and `ignoredResponseHeaders` stripping (content-encoding, content-length, custom headers).
+- **Body redaction (2 tests)**: Request body password scrubbing via regex `BodyRedactor`, and response body email redaction — both verified by parsing the serialized JSON field value.
+- **URL normalization (1 test)**: `UrlPattern.fromRetrofitStyle` replaces concrete path segments with placeholders in recorded URLs.
+- **Default behavior (2 tests)**: `keepAll()`/`keepBody()` defaults preserve all data; PASSTHROUGH mode produces no request/response events.
+
+Remaining open items: AC-3.4, AC-3.5 (Retrofit docs/samples), AC-6.1–6.7 (publishing), AC-7.5 (security docs).
+
+## 2026-04-09
+
+### Completed Acceptance Criteria
+- AC-0.6: Write tests for current NDJSON schema compatibility (round-trip serialize/deserialize)
+
+### Files Changed
+- `sessionkit/src/test/java/com/hellmannratti/vcr/sessionkit/NdjsonSchemaCharacterizationTest.kt` (new)
+- `USER_STORIES.md` (updated AC-0.6 checkbox)
+- `sessionkit/src/test/java/com/hellmannratti/vcr/sessionkit/ReplayCursorCharacterizationTest.kt` (fixed illegal `/` in test name)
+- `sessionkit/src/test/java/com/hellmannratti/vcr/sessionkit/TapeLoadDiagnosticsCharacterizationTest.kt` (fixed illegal `/` in test names)
+
+### Summary
+Completed AC-0.6 with 22 characterization tests for NDJSON schema round-trip compatibility. Also fixed 5 pre-existing test failures and 3 compilation errors across earlier characterization tests.
+
+**AC-0.6 - NDJSON Schema Tests** (22 new test methods in NdjsonSchemaCharacterizationTest.kt):
+- **Round-trip per event type (6 tests)**: Each event type (SessionStart, Action, UiEvent, Request, Response) round-trips through encode/decode without data loss, including nullable bodySha256.
+- **Serialized JSON shape (3 tests)**: Verifies type discriminator is always present, envelope fields (schema, seq, ts, metadata) are always written, and default values are serialized with encodeDefaults=true.
+- **Legacy NDJSON fallback (3 tests)**: TapeLoader handles lines missing envelope fields, assigns sequential seq values, and ignores unknown extra fields.
+- **Write/read round-trip (3 tests)**: SessionRecorder output is loadable by TapeLoader, writes valid NDJSON with all required fields, and assigns monotonically increasing seq values.
+- **Format edge cases (5 tests)**: Newlines in response bodies are escaped in single JSON lines, JSON bodies preserved as strings, metadata maps round-trip, null ts preserved, empty maps round-trip.
+- **Forward compatibility (2 tests)**: Unknown fields are ignored during deserialization; a full NDJSON file with all event types loads correctly.
+
+**Pre-existing test fixes** (5 failing tests + 3 compilation errors corrected to match actual behavior):
+- Fixed `RequestMatchingCharacterizationTest`: `find()` falls back to null-hash bucket when exact bucket is exhausted (was asserting null instead of fallback).
+- Fixed `SeqOrderingCharacterizationTest`: Negative seq values after seq=0 cause non-monotonic error because normalization maps them to 0 (conflicting with existing seq=0).
+- Fixed `TapeLoadDiagnosticsCharacterizationTest`: Single negative-seq event normalizes to 0 then fails as NoTapeFoundException (not IllegalArgumentException). Method field is a String not an enum (any value accepted). Multi-session file with empty last session loads the session containing the last response (no error).
+- Fixed illegal `/` characters in backtick test names in `ReplayCursorCharacterizationTest` and `TapeLoadDiagnosticsCharacterizationTest`.
+
+This completes US-0 (Freeze Current Behavior with Characterization Tests). All six acceptance criteria (AC-0.1 through AC-0.6) are now done. All 135 sessionkit tests pass.
+
 ## 2026-04-08
 
 ### Completed Acceptance Criteria

@@ -312,7 +312,7 @@ class RequestMatchingCharacterizationTest {
     }
 
     @Test
-    fun `request matching with body hash - null hash bucket only returned when no exact match`() {
+    fun `request matching with body hash - falls back to null hash bucket when exact bucket exhausted`() {
         val tape = ReplayTape(
             map = mapOf(
                 RequestKey("POST", "https://api.test/submit", "abc") to listOf(
@@ -330,10 +330,11 @@ class RequestMatchingCharacterizationTest {
         assertNotNull(response)
         assertEquals("exact", response?.body)
 
-        // Request the same again, should get next from exact bucket
+        // When exact bucket is exhausted, falls back to the null hash bucket
         val response2 = tape.find(request, bodySha256 = "abc")
 
-        assertNull(response2)
+        assertNotNull(response2)
+        assertEquals("fallback", response2?.body)
     }
 
     // ============================================================================
