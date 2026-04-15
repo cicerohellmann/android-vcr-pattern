@@ -47,7 +47,7 @@
 - [x] AC-3.2: Verify converters (Gson/Moshi/kotlinx.serialization) work correctly with replayed bodies
 - [x] AC-3.3: Verify error responses and headers pass through correctly
 - [x] AC-3.4: Write sample usage code showing Retrofit + Cassete setup
-- [ ] AC-3.5: Document installation for common Retrofit setups
+- [x] AC-3.5: Document installation for common Retrofit setups
 
 ## US-4: Build Ktor Client Plugin Module
 **As a** developer using Ktor, **I want** to install Cassete directly in my `HttpClient`, **so that** Ktor apps get the same record/replay capabilities as OkHttp apps.
@@ -76,13 +76,13 @@
 **As a** library consumer, **I want** Cassete published as Maven artifacts, **so that** I can depend on it without a source checkout.
 
 ### Acceptance Criteria
-- [ ] AC-6.1: Add `maven-publish` plugin to all library modules
-- [ ] AC-6.2: Choose stable Maven coordinates (group ID, artifact IDs)
-- [ ] AC-6.3: Choose stable package names
+- [x] AC-6.1: Add `maven-publish` plugin to all library modules
+- [x] AC-6.2: Choose stable Maven coordinates (group ID, artifact IDs)
+- [x] AC-6.3: Choose stable package names
 - [ ] AC-6.4: Add versioning policy (SemVer)
-- [ ] AC-6.5: Document supported versions of OkHttp, Retrofit, and Ktor
+- [x] AC-6.5: Document supported versions of OkHttp, Retrofit, and Ktor
 - [ ] AC-6.6: Add API documentation (KDoc) for all public types
-- [ ] AC-6.7: Update README with adapter-based architecture description
+- [x] AC-6.7: Update README with adapter-based architecture description
 
 ## US-7: Security and Privacy Hooks
 **As a** library consumer handling sensitive data, **I want** configurable redaction and normalization, **so that** tapes don't leak auth tokens, PII, or other sensitive information.

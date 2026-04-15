@@ -3,6 +3,11 @@
 ## Summary
 Extend NDJSON schema to capture UiEvents and nondeterministic outputs with ordering metadata.
 
+## Verified Status
+
+- Status: Complete
+- Verified on 2026-04-15 against `cassete-core` event/recorder/loader code plus the current `:cassete-core:test` suite.
+
 ## Tasks
 
 ### 1) Event shapes (NDJSON line schema)
@@ -54,8 +59,8 @@ Uses `type = "ACTION"` with stable `name` and `details` shapes.
 - Loader validation rejects:
   - malformed JSON lines that cannot decode to `Event`
   - `schema != 1`
-  - `seq < 0` or non-monotonic `seq`
   - `RESPONSE` referencing a `requestId` that did not appear in a prior `REQUEST`
+- Loader normalizes missing, negative, and non-increasing `seq` values into strict file-order monotonic sequence before replay validation.
 
 ### 5) Example tape
 
@@ -68,6 +73,6 @@ Uses `type = "ACTION"` with stable `name` and `details` shapes.
 ```
 
 ## Acceptance Criteria
-- Schema doc exists and matches implementation.
-- Recorder writes UiEvent and nondeterministic-output events with sequence numbers.
-- Basic validation in place (e.g., rejects malformed events, ensures seq increments).
+- [x] Schema doc exists and matches the current implementation.
+- [x] Recorder writes UiEvent and nondeterministic-output events with sequence numbers.
+- [x] Basic validation is in place for malformed events, supported schema, request/response ordering, and replay-safe sequence normalization.

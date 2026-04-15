@@ -3,6 +3,11 @@
 ## Summary
 Implement SessionPlayer with transport controls (play/pause/step/seek/back) and feed events into `onEvent`.
 
+## Verified Status
+
+- Status: Complete
+- Verified on 2026-04-15 against `cassete-core/src/main/java/com/hellmannratti/cassete/core/SessionPlayer.kt`, app replay wiring, and the current `:cassete-core:test` plus `:app:testDebugUnitTest` suite.
+
 ## Tasks
 - Build a player that reads the NDJSON log and replays events through the ViewModel `onEvent`.
 - Implement controls: play/pause, step forward, step back, seek to position.
@@ -16,6 +21,6 @@ Implement SessionPlayer with transport controls (play/pause/step/seek/back) and 
 - JVM tests now cover player stepping and rewind behavior in both `:cassete-core` and the app-level replay flow.
 
 ## Acceptance Criteria
-- Player can load a session file and drive the UI deterministically via `onEvent`.
-- Transport controls function: play, pause, step fwd/back, seek; rewind restores prior state per chosen strategy.
-- Live external inputs are gated off while player is active.
+- [x] Player can load a session file and drive the UI deterministically via `onEvent`.
+- [x] Transport controls function: play, pause, step fwd/back, seek; rewind restores prior state per chosen strategy.
+- [x] Live external inputs are gated off while player is active.

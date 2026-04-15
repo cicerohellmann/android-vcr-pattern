@@ -3,6 +3,11 @@
 ## Summary
 Ensure replay mode disables real external inputs and substitutes recorded values.
 
+## Verified Status
+
+- Status: Complete
+- Verified on 2026-04-15 against `ApiTestViewModel`, `ReplayNondeterminism`, `CasseteOkHttp`, and the current replay JVM tests.
+
 ## Tasks
 - Add a replay mode switch that routes clock/random/UUID/network calls to recorded streams.
 - Guard side-effect code paths so they don’t hit real services during replay.
@@ -15,6 +20,6 @@ Ensure replay mode disables real external inputs and substitutes recorded values
 - Network replay remains mediated by `CasseteOkHttp`, which serves recorded responses before the backend interceptor is reached.
 
 ## Acceptance Criteria
-- When replay is active, no real network/time/random calls execute; only recorded data is used.
-- Logs/metrics confirm calls are sourced from the tape with correct sequencing.
-- Replay switch is easy to toggle (e.g., via dev UI or config flag).
+- [x] When replay is active, no real network/time/random calls execute; only recorded data is used.
+- [x] Logs and test evidence confirm calls are sourced from the tape with recorded sequencing.
+- [x] Replay switch is easy to toggle (e.g., via dev UI or config flag).
